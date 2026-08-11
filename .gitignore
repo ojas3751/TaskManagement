@@ -1,0 +1,21 @@
+# 依存パッケージ
+node_modules/
+venv/
+__pycache__/
+
+# 環境変数・秘密情報（絶対に上げない）
+.env
+.env.local
+*.key
+
+# ビルド成果物
+dist/
+build/
+
+# OS / エディタ
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Claude Code のローカル設定
+.claude/settings.local.json
