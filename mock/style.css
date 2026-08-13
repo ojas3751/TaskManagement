@@ -1,0 +1,449 @@
+/* ------------------------------------------------------------------
+   マイタスク 画面モック
+   色はすべてここのカスタムプロパティに集約する。
+   実装時の配色決定は、この値を差し替えて確認する想定。
+   ------------------------------------------------------------------ */
+
+:root {
+  /* 基本 */
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-list-bg: #ebecf0;
+  --color-text: #172b4d;
+  --color-text-sub: #5e6c84;
+  --color-border: #d6d9e0;
+  --color-primary: #0b5cab;      /* 白文字とのコントラスト 6.4:1 */
+  --color-primary-text: #ffffff;
+
+  /* 期限による色分け（F-11） */
+  --color-danger: #b3261e;        /* 白文字とのコントラスト 6.0:1 */
+  --color-danger-text: #ffffff;
+  --color-warn: #b8860b;          /* 黄系。ボーダーのみに使う */
+
+  /* 完了列のタスク（機能仕様書 2.6） */
+  --color-done-bg: #e4e6ea;
+  --color-done-border: #c4c8d0;
+  --color-done-text: #1a1a1a;
+
+  /* 文字数カウンタの警告色（白背景で 4.5:1 以上） */
+  --color-counter-over: #b3261e;
+
+  --radius: 6px;
+  --card-border-width: 3px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", "Meiryo", system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+/* ---------------- ヘッダー ---------------- */
+
+.app-header {
+  padding: 12px 20px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-header__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* ---------------- 汎用ボタン ---------------- */
+
+.btn {
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) { background: #eceef2; }
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.btn--primary:hover:not(:disabled) { background: #094a8b; }
+
+.btn--icon {
+  padding: 2px 6px;
+  line-height: 1.2;
+  font-size: 12px;
+}
+
+.btn--block {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.btn--danger-text { color: var(--color-danger); }
+
+/* ---------------- ボード ---------------- */
+
+.board {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px 32px;
+  overflow-x: auto;
+}
+
+.board[hidden] { display: none; }
+
+.list {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--color-list-bg);
+  border-radius: var(--radius);
+}
+
+.list__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.list__name {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.list__admin {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.list__empty {
+  padding: 16px 0;
+  color: var(--color-text-sub);
+  text-align: center;
+}
+
+.list__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 完了列の折りたたみ（F-14）。10件目が上部だけ覗く高さで切る */
+.list__cards--collapsed {
+  overflow: hidden;
+  position: relative;
+}
+
+.list__cards--collapsed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24px;
+  background: linear-gradient(to bottom, rgba(235, 236, 240, 0), var(--color-list-bg));
+  pointer-events: none;
+}
+
+/* ---------------- タスク ---------------- */
+
+.card-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.card-row__check {
+  margin-top: 10px;
+}
+
+.card {
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  background: var(--color-surface);
+  border: var(--card-border-width) solid transparent;
+  border-radius: var(--radius);
+  box-shadow: 0 1px 1px rgba(9, 30, 66, 0.2);
+}
+
+.card__title {
+  margin: 0;
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+
+.card__title:hover { text-decoration: underline; }
+
+.card__due {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-sub);
+}
+
+.card__actions {
+  display: flex;
+  gap: 3px;
+  margin-top: 8px;
+}
+
+.card__actions .card__delete { margin-left: auto; }
+
+/* 期限による色分け（F-11） */
+.card--overdue,
+.card--today {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-danger-text);
+}
+
+.card--overdue .card__due,
+.card--today .card__due { color: var(--color-danger-text); }
+
+.card--tomorrow { border-color: var(--color-danger); }
+.card--soon { border-color: var(--color-warn); }
+
+/* 完了列での上書き（機能仕様書 2.6）。期限の色分けより優先する */
+.card--done,
+.card--done.card--overdue,
+.card--done.card--today,
+.card--done.card--tomorrow,
+.card--done.card--soon {
+  background: var(--color-done-bg);
+  border-color: var(--color-done-border);
+  color: var(--color-done-text);
+}
+
+.card--done .card__due { color: #43474d; }
+
+/* ---------------- リスト追加 ---------------- */
+
+.board__add-list {
+  flex: 0 0 200px;
+}
+
+/* ---------------- モーダル ---------------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(9, 30, 66, 0.5);
+  z-index: 50;
+}
+
+.modal-overlay[hidden] { display: none; }
+
+.modal {
+  width: min(640px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: 8px;
+}
+
+.modal__header,
+.modal__footer {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+}
+
+.modal__header { border-bottom: 1px solid var(--color-border); }
+
+.modal__footer {
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.modal__title {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+}
+
+.modal__close {
+  font: inherit;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.modal__body {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.field { margin-bottom: 16px; }
+
+.field__label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.field__input {
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.field__input--textarea {
+  resize: vertical;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.field__input--date,
+.field__input--time { width: auto; }
+
+.field__counter {
+  margin: 4px 0 0;
+  font-size: 12px;
+  text-align: right;
+  color: var(--color-text-sub);
+  font-variant-numeric: tabular-nums;
+}
+
+.field__counter--over {
+  color: var(--color-counter-over);
+  font-weight: 700;
+}
+
+.due-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.due-row--sub { margin-top: 8px; }
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.select-all { display: flex; align-items: center; gap: 4px; }
+
+/* ---------------- エラー表示 ---------------- */
+
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fdeceb;
+  border-bottom: 2px solid var(--color-danger);
+  color: #6b1610;
+}
+
+.error-banner[hidden] { display: none; }
+
+.error-banner__icon { font-size: 18px; line-height: 1.2; }
+.error-banner__body { flex: 1; }
+.error-banner__title { margin: 0; font-weight: 700; }
+.error-banner__detail { margin: 2px 0 0; }
+
+.error-banner__close {
+  font: inherit;
+  padding: 2px 8px;
+  border: 1px solid #c9a5a2;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.error-fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 40px 20px;
+}
+
+.error-fullscreen[hidden] { display: none; }
+
+.error-fullscreen__inner { text-align: center; }
+.error-fullscreen__icon { margin: 0; font-size: 48px; color: var(--color-danger); }
+.error-fullscreen__title { margin: 16px 0 4px; font-size: 18px; font-weight: 700; }
+.error-fullscreen__detail { margin: 0 0 20px; color: var(--color-text-sub); }
+
+/* ---------------- デモパネル（モック専用） ---------------- */
+
+.demo-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  padding: 10px 12px;
+  background: #24292f;
+  color: #ffffff;
+  border-radius: var(--radius);
+  font-size: 12px;
+  opacity: 0.92;
+  z-index: 60;
+}
+
+.demo-panel__title {
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.demo-panel__note {
+  display: block;
+  font-weight: 400;
+  color: #b9c0c8;
+}
+
+.demo-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}

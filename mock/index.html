@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>マイタスク（画面モック）</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 4.2 操作中の失敗: 上部バナー -->
+  <div id="error-banner" class="error-banner" hidden>
+    <span class="error-banner__icon">⚠</span>
+    <div class="error-banner__body">
+      <p class="error-banner__title">データベースに接続できません。</p>
+      <p class="error-banner__detail">Docker が起動しているか確認してください。</p>
+    </div>
+    <button type="button" class="error-banner__close" id="error-banner-close" aria-label="閉じる">✕</button>
+  </div>
+
+  <header class="app-header">
+    <h1 class="app-header__title">マイタスク</h1>
+  </header>
+
+  <!-- 4.1 初期読み込みの失敗: 全面エラー -->
+  <div id="error-fullscreen" class="error-fullscreen" hidden>
+    <div class="error-fullscreen__inner">
+      <p class="error-fullscreen__icon">⚠</p>
+      <p class="error-fullscreen__title">サーバーが起動していません。</p>
+      <p class="error-fullscreen__detail">起動してから再読み込みしてください。</p>
+      <button type="button" class="btn btn--primary" id="error-reload">再読み込み</button>
+    </div>
+  </div>
+
+  <main class="board" id="board">
+    <!-- 列は app.js が描画する -->
+  </main>
+
+  <!-- タスクの詳細モーダル -->
+  <div class="modal-overlay" id="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal__header">
+        <h2 class="modal__title" id="modal-title">タスクの詳細</h2>
+        <button type="button" class="modal__close" id="modal-close" aria-label="閉じる">✕</button>
+      </div>
+
+      <div class="modal__body">
+        <div class="field">
+          <label class="field__label" for="input-title">タイトル</label>
+          <input type="text" id="input-title" class="field__input" data-max="100">
+          <p class="field__counter" id="counter-title">0/100</p>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="input-description">説明文</label>
+          <textarea id="input-description" class="field__input field__input--textarea" rows="8" data-max="5000"></textarea>
+          <p class="field__counter" id="counter-description">0/5000</p>
+        </div>
+
+        <div class="field">
+          <span class="field__label">期限</span>
+          <div class="due-row">
+            <input type="date" id="input-due-date" class="field__input field__input--date">
+            <input type="time" id="input-due-time" class="field__input field__input--time">
+          </div>
+          <div class="due-row due-row--sub">
+            <button type="button" class="btn" id="btn-clear-due">期限をクリア</button>
+            <label class="checkbox">
+              <input type="checkbox" id="input-has-due-time">
+              <span>時刻を指定する</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal__footer">
+        <button type="button" class="btn" id="modal-cancel">キャンセル</button>
+        <button type="button" class="btn btn--primary" id="modal-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- モック専用のデモパネル（本実装には含まれない） -->
+  <aside class="demo-panel">
+    <p class="demo-panel__title">デモ切替<span class="demo-panel__note">モック用。本実装には含まれない</span></p>
+    <label class="demo-panel__item"><input type="radio" name="demo-state" value="normal" checked><span>正常</span></label>
+    <label class="demo-panel__item"><input type="radio" name="demo-state" value="fullscreen"><span>初期読み込み失敗</span></label>
+    <label class="demo-panel__item"><input type="radio" name="demo-state" value="banner"><span>操作中の失敗</span></label>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
