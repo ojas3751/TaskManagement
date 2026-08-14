@@ -63,7 +63,7 @@
       '10件目のタスク', '11件目のタスク', '12件目のタスク'
     ];
     doneTitles.forEach(function (t, i) {
-      // 完了列は期限に関わらず薄グレーになる（機能仕様書 2.6）。
+      // 完了列は期限に関わらず薄グレーになる（機能仕様書 2.7）。
       // 差し戻すと色が復活することを確かめられるよう、期限を持たせておく。
       state.cards.push(card(done, t, dueFromToday(-20 + i, 0, 0), false, ''));
     });
@@ -220,6 +220,7 @@
       var empty = document.createElement('p');
       empty.className = 'list__empty';
       empty.textContent = '（タスクなし）';
+      makeDropTarget(empty, list);   // 空の列にも落とせる（F-13）
       el.appendChild(empty);
     } else {
       var wrap = document.createElement('div');
@@ -230,9 +231,10 @@
           wrap.classList.add('list__cards--collapsed');
         }
       }
-      cards.forEach(function (c, i) {
-        wrap.appendChild(renderCard(c, list, i, cards.length, index, lists));
+      cards.forEach(function (c) {
+        wrap.appendChild(renderCard(c, list));
       });
+      makeDropTarget(wrap, list);
       el.appendChild(wrap);
 
       if (list.isFixedLast && cards.length > DONE_VISIBLE_COUNT) {
@@ -278,9 +280,10 @@
     return label;
   }
 
-  function renderCard(c, list, indexInList, countInList, listIndex, lists) {
+  function renderCard(c, list) {
     var row = document.createElement('div');
     row.className = 'card-row';
+    row.dataset.cardId = c.id;
 
     // チェックボックスは「完了」列のタスクにのみ（F-15）
     if (list.isFixedLast) {
@@ -298,7 +301,23 @@
 
     var el = document.createElement('article');
     el.className = 'card';
-    // 完了列に在ることだけを条件に上書きする（機能仕様書 2.6）
+    el.draggable = true;               // 移動はドラッグ&ドロップのみ（F-13）
+    el.addEventListener('dragstart', function (e) {
+      draggingCardId = c.id;
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox はデータをセットしないとドラッグが始まらない
+      e.dataTransfer.setData('text/plain', String(c.id));
+      // クラス付与を次のフレームに回す。dragstart 中に見た目を変えると
+      // ドラッグ画像にその変更が写り込む
+      setTimeout(function () { el.classList.add('card--dragging'); }, 0);
+    });
+    el.addEventListener('dragend', function () {
+      draggingCardId = null;
+      clearDropMarkers();
+      el.classList.remove('card--dragging');
+    });
+
+    // 完了列に在ることだけを条件に上書きする（機能仕様書 2.7）
     if (list.isFixedLast) {
       el.classList.add('card--done');
     } else {
@@ -309,6 +328,7 @@
     var title = document.createElement('button');
     title.type = 'button';
     title.className = 'card__title';
+    title.draggable = false;  // ボタン上から掴んでもカード全体のドラッグが始まるように
     title.textContent = c.title;
     title.addEventListener('click', function () { openModal(c); });
     el.appendChild(title);
@@ -320,22 +340,9 @@
       el.appendChild(due);
     }
 
+    // 移動ボタンは持たない（F-12 は欠番）。削除のみ残す
     var actions = document.createElement('div');
     actions.className = 'card__actions';
-    actions.appendChild(iconButton('↑', '上へ', indexInList === 0, function () {
-      moveCardWithin(c, -1);
-    }));
-    actions.appendChild(iconButton('↓', '下へ', indexInList === countInList - 1, function () {
-      moveCardWithin(c, 1);
-    }));
-    actions.appendChild(iconButton('←', '左の列へ', listIndex === 0, function () {
-      moveCardAcross(c, -1);
-    }));
-    // 「完了」は最右のため [→] は常に無効
-    actions.appendChild(iconButton('→', '右の列へ', listIndex === lists.length - 1, function () {
-      moveCardAcross(c, 1);
-    }));
-
     var del = iconButton('削除', 'タスクを削除', false, function () { deleteCard(c); });
     del.classList.add('card__delete');
     actions.appendChild(del);
@@ -371,6 +378,92 @@
     b.textContent = label;
     b.addEventListener('click', onClick);
     return b;
+  }
+
+  // ---------------- ドラッグ&ドロップ（F-13） ----------------
+
+  var draggingCardId = null;
+
+  // 挿入位置を示す線をすべて消す
+  function clearDropMarkers() {
+    Array.prototype.forEach.call(
+      boardEl.querySelectorAll('.card-row--drop-before, .card-row--drop-after, .list__empty--drop'),
+      function (el) {
+        el.classList.remove('card-row--drop-before', 'card-row--drop-after', 'list__empty--drop');
+      }
+    );
+  }
+
+  // ポインタのY座標から、そのリスト内での挿入位置（0..件数）を求める。
+  // 各タスクの中点より上なら手前、下なら奥に入る。
+  function dropIndexAt(container, clientY) {
+    var rows = container.querySelectorAll('.card-row');
+    for (var i = 0; i < rows.length; i++) {
+      var box = rows[i].getBoundingClientRect();
+      if (clientY < box.top + box.height / 2) return i;
+    }
+    return rows.length;
+  }
+
+  // 挿入位置に線を出す。末尾に入る場合は最後のタスクの下に出す
+  function showDropMarker(container, index) {
+    clearDropMarkers();
+    var rows = container.querySelectorAll('.card-row');
+    if (rows.length === 0) {
+      container.classList.add('list__empty--drop');
+    } else if (index < rows.length) {
+      rows[index].classList.add('card-row--drop-before');
+    } else {
+      rows[rows.length - 1].classList.add('card-row--drop-after');
+    }
+  }
+
+  function makeDropTarget(container, list) {
+    container.addEventListener('dragover', function (e) {
+      if (draggingCardId === null) return;
+      e.preventDefault();                     // これが無いと drop が発火しない
+      e.dataTransfer.dropEffect = 'move';
+      showDropMarker(container, dropIndexAt(container, e.clientY));
+    });
+
+    container.addEventListener('drop', function (e) {
+      if (draggingCardId === null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dropCard(findCard(draggingCardId), list, dropIndexAt(container, e.clientY));
+    });
+  }
+
+  // ボード上のどこで離しても、掴んだ状態が残らないようにする
+  boardEl.addEventListener('dragover', function (e) {
+    if (draggingCardId !== null) e.preventDefault();
+  });
+  boardEl.addEventListener('drop', function () { clearDropMarkers(); });
+
+  function dropCard(c, toList, index) {
+    if (!c) return;
+    var fromListId = c.listId;
+    var sameList = fromListId === toList.id;
+
+    // 同じリスト内では、自分より後ろの位置に落とすと自分の分だけ添え字がずれる
+    if (sameList) {
+      var currentIndex = cardsOf(fromListId).indexOf(c);
+      if (index > currentIndex) index -= 1;
+      if (index === currentIndex) { clearDropMarkers(); return; }
+    }
+
+    c.listId = toList.id;
+    // 挿入位置の前後に来るよう、中間の値を振ってから振り直す
+    c.position = index - 0.5;
+    if (!sameList) renumber(fromListId);
+    renumber(toList.id);
+
+    // 完了列から出たタスクは選択状態を持たない
+    if (findList(fromListId).isFixedLast && !toList.isFixedLast) {
+      delete state.selectedCardIds[c.id];
+    }
+    draggingCardId = null;
+    render();
   }
 
   // 10件目のタスクが上部だけ覗く高さに切る（F-14）
@@ -463,31 +556,16 @@
     render();
   }
 
-  function moveCardWithin(c, delta) {
-    var siblings = cardsOf(c.listId);
-    var i = siblings.indexOf(c);
-    var j = i + delta;
-    if (j < 0 || j >= siblings.length) return;
-    var tmp = siblings[i].position;
-    siblings[i].position = siblings[j].position;
-    siblings[j].position = tmp;
-    render();
-  }
-
-  function moveCardAcross(c, delta) {
-    var lists = sortedLists();
-    var from = findList(c.listId);
-    var j = lists.indexOf(from) + delta;
-    if (j < 0 || j >= lists.length) return;
-    var to = lists[j];
-    var fromId = c.listId;
-    c.listId = to.id;
-    c.position = cardsOf(to.id).length; // 自分を含めた件数＝末尾の位置
-    renumber(fromId);
-    renumber(to.id);
+  // 詳細モーダルからのリスト移動（F-23）。移動先は末尾
+  function moveCardToList(c, toListId) {
+    var fromListId = c.listId;
+    if (fromListId === toListId) return;
+    c.listId = toListId;
+    c.position = cardsOf(toListId).length; // 自分を含めた件数＝末尾の位置
+    renumber(fromListId);
+    renumber(toListId);
     // 完了列から出たタスクは選択状態を持たない
-    if (from.isFixedLast) delete state.selectedCardIds[c.id];
-    render();
+    if (findList(fromListId).isFixedLast) delete state.selectedCardIds[c.id];
   }
 
   function deleteCard(c) {
@@ -524,10 +602,22 @@
   var dateInput = document.getElementById('input-due-date');
   var timeInput = document.getElementById('input-due-time');
   var hasTimeInput = document.getElementById('input-has-due-time');
+  var listInput = document.getElementById('input-list');
   var editingCardId = null;
 
   function openModal(c) {
     editingCardId = c.id;
+
+    // 選択肢は「完了」を含む全リスト（F-23）
+    listInput.textContent = '';
+    sortedLists().forEach(function (l) {
+      var opt = document.createElement('option');
+      opt.value = String(l.id);
+      opt.textContent = l.name;
+      listInput.appendChild(opt);
+    });
+    listInput.value = String(c.listId);
+
     titleInput.value = c.title;
     descInput.value = c.description;
     if (c.dueAt) {
@@ -564,6 +654,9 @@
     c.title = title;
     c.description = descInput.value;
 
+    // リストが変わっていれば移動先の末尾へ（F-23）
+    moveCardToList(c, Number(listInput.value));
+
     if (dateInput.value) {
       var parts = dateInput.value.split('-');
       var h = 0, m = 0;
@@ -572,7 +665,7 @@
         h = Number(hm[0]);
         m = Number(hm[1]);
       }
-      // 時分が未入力なら 00:00 として扱う（機能仕様書 2.3）
+      // 時分が未入力なら 00:00 として扱う（機能仕様書 2.4）
       c.dueAt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), h, m);
       c.hasDueTime = hasTimeInput.checked;
     } else {

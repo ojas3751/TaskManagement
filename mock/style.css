@@ -20,7 +20,7 @@
   --color-danger-text: #ffffff;
   --color-warn: #b8860b;          /* 黄系。ボーダーのみに使う */
 
-  /* 完了列のタスク（機能仕様書 2.6） */
+  /* 完了列のタスク（機能仕様書 2.7） */
   --color-done-bg: #e4e6ea;
   --color-done-border: #c4c8d0;
   --color-done-text: #1a1a1a;
@@ -175,6 +175,29 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 6px;
+  position: relative;
+}
+
+/* ドラッグ中の挿入位置を示す線（F-13） */
+.card-row--drop-before::before,
+.card-row--drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-primary);
+}
+
+.card-row--drop-before::before { top: -6px; }
+.card-row--drop-after::after { bottom: -6px; }
+
+/* 空の列に落とす場合 */
+.list__empty--drop {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -4px;
+  border-radius: var(--radius);
 }
 
 .card-row__check {
@@ -189,7 +212,13 @@ body {
   border: var(--card-border-width) solid transparent;
   border-radius: var(--radius);
   box-shadow: 0 1px 1px rgba(9, 30, 66, 0.2);
+  cursor: grab;
 }
+
+.card:active { cursor: grabbing; }
+
+/* 掴まれている間、元の位置は薄く残す */
+.card--dragging { opacity: 0.4; }
 
 .card__title {
   margin: 0;
@@ -236,7 +265,7 @@ body {
 .card--tomorrow { border-color: var(--color-danger); }
 .card--soon { border-color: var(--color-warn); }
 
-/* 完了列での上書き（機能仕様書 2.6）。期限の色分けより優先する */
+/* 完了列での上書き（機能仕様書 2.7）。期限の色分けより優先する */
 .card--done,
 .card--done.card--overdue,
 .card--done.card--today,
@@ -340,6 +369,12 @@ body {
 
 .field__input--date,
 .field__input--time { width: auto; }
+
+.field__input--select {
+  width: auto;
+  min-width: 200px;
+  cursor: pointer;
+}
 
 .field__counter {
   margin: 4px 0 0;

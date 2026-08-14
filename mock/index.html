@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- 4.2 操作中の失敗: 上部バナー -->
+  <!-- 画面設計 5.2 操作中の失敗: 上部バナー -->
   <div id="error-banner" class="error-banner" hidden>
     <span class="error-banner__icon">⚠</span>
     <div class="error-banner__body">
@@ -21,7 +21,7 @@
     <h1 class="app-header__title">マイタスク</h1>
   </header>
 
-  <!-- 4.1 初期読み込みの失敗: 全面エラー -->
+  <!-- 画面設計 5.1 初期読み込みの失敗: 全面エラー -->
   <div id="error-fullscreen" class="error-fullscreen" hidden>
     <div class="error-fullscreen__inner">
       <p class="error-fullscreen__icon">⚠</p>
@@ -44,6 +44,12 @@
       </div>
 
       <div class="modal__body">
+        <!-- リスト移動（F-23）。タイトルより上に置き、タブ移動だけで到達できるようにする -->
+        <div class="field">
+          <label class="field__label" for="input-list">リスト</label>
+          <select id="input-list" class="field__input field__input--select"></select>
+        </div>
+
         <div class="field">
           <label class="field__label" for="input-title">タイトル</label>
           <input type="text" id="input-title" class="field__input" data-max="100">
