@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- 画面設計 5.2 操作中の失敗: 上部バナー -->
+  <!-- 画面設計 7.2 操作中の失敗: 上部バナー -->
   <div id="error-banner" class="error-banner" hidden>
     <span class="error-banner__icon">⚠</span>
     <div class="error-banner__body">
@@ -21,7 +21,7 @@
     <h1 class="app-header__title">マイタスク</h1>
   </header>
 
-  <!-- 画面設計 5.1 初期読み込みの失敗: 全面エラー -->
+  <!-- 画面設計 7.1 初期読み込みの失敗: 全面エラー -->
   <div id="error-fullscreen" class="error-fullscreen" hidden>
     <div class="error-fullscreen__inner">
       <p class="error-fullscreen__icon">⚠</p>
@@ -54,6 +54,7 @@
           <label class="field__label" for="input-title">タイトル</label>
           <input type="text" id="input-title" class="field__input" data-max="100">
           <p class="field__counter" id="counter-title">0/100</p>
+          <p class="field__error" id="error-title" hidden></p>
         </div>
 
         <div class="field">
@@ -81,6 +82,46 @@
       <div class="modal__footer">
         <button type="button" class="btn" id="modal-cancel">キャンセル</button>
         <button type="button" class="btn btn--primary" id="modal-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 名前の入力モーダル（F-02, F-03, F-06）。
+       prompt() では文字数カウンタ（E-01）を出せないため画面内で持つ -->
+  <div class="modal-overlay" id="input-overlay" hidden>
+    <div class="modal modal--narrow" role="dialog" aria-modal="true" aria-labelledby="input-modal-title">
+      <div class="modal__header">
+        <h2 class="modal__title" id="input-modal-title"></h2>
+        <button type="button" class="modal__close" id="input-modal-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <div class="field">
+          <label class="field__label" for="input-text" id="input-modal-label"></label>
+          <input type="text" id="input-text" class="field__input" data-max="100">
+          <p class="field__counter" id="input-modal-counter">0/100</p>
+          <p class="field__error" id="input-modal-error" hidden></p>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn" id="input-modal-cancel">キャンセル</button>
+        <button type="button" class="btn btn--primary" id="input-modal-ok">追加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 削除の確認モーダル（F-04, F-08, F-15） -->
+  <div class="modal-overlay" id="confirm-overlay" hidden>
+    <div class="modal modal--narrow" role="alertdialog" aria-modal="true"
+         aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <div class="modal__header">
+        <h2 class="modal__title" id="confirm-title">削除の確認</h2>
+      </div>
+      <div class="modal__body">
+        <p class="confirm__message" id="confirm-message"></p>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn" id="confirm-cancel">キャンセル</button>
+        <button type="button" class="btn btn--danger" id="confirm-ok">削除する</button>
       </div>
     </div>
   </div>

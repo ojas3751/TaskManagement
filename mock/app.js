@@ -252,6 +252,10 @@
     if (list.isFixedLast) {
       var delSelected = textButton('選択したものを削除', function () { deleteSelected(); });
       delSelected.classList.add('btn--danger-text');
+      // 1件も選ばれていないなら押せない（押しても何も起きない状態を作らない）
+      delSelected.disabled = !cards.some(function (c) {
+        return !!state.selectedCardIds[c.id];
+      });
       el.appendChild(delSelected);
     }
 
@@ -333,20 +337,21 @@
     title.addEventListener('click', function () { openModal(c); });
     el.appendChild(title);
 
+    // 期限とゴミ箱は同じ行に置く。削除ボタンのためだけに1行使うと、
+    // タスク1件の高さが増えて一覧できる件数が減る
+    var meta = document.createElement('div');
+    meta.className = 'card__meta';
+
     if (c.dueAt) {
       var due = document.createElement('p');
       due.className = 'card__due';
       due.textContent = formatDue(c);
-      el.appendChild(due);
+      meta.appendChild(due);
     }
 
     // 移動ボタンは持たない（F-12 は欠番）。削除のみ残す
-    var actions = document.createElement('div');
-    actions.className = 'card__actions';
-    var del = iconButton('削除', 'タスクを削除', false, function () { deleteCard(c); });
-    del.classList.add('card__delete');
-    actions.appendChild(del);
-    el.appendChild(actions);
+    meta.appendChild(trashButton('タスクを削除', function () { deleteCard(c); }));
+    el.appendChild(meta);
 
     row.appendChild(el);
     return row;
@@ -368,6 +373,30 @@
     b.title = title;
     b.disabled = !!disabled;
     if (!disabled) b.addEventListener('click', onClick);
+    return b;
+  }
+
+  // ゴミ箱アイコンのボタン。字形はすべて CSS の図形で描く
+  function trashButton(label, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn--icon btn--trash';
+    b.title = label;
+    b.setAttribute('aria-label', label); // アイコンだけなので読み上げ用の名前を持たせる
+    b.addEventListener('click', onClick);
+
+    var icon = document.createElement('span');
+    icon.className = 'icon-trash';
+    icon.setAttribute('aria-hidden', 'true');
+
+    var lid = document.createElement('span');
+    lid.className = 'icon-trash__lid';
+    var body = document.createElement('span');
+    body.className = 'icon-trash__body';
+    icon.appendChild(lid);
+    icon.appendChild(body);
+
+    b.appendChild(icon);
     return b;
   }
 
@@ -477,6 +506,98 @@
     wrap.style.maxHeight = (top + 26) + 'px';
   }
 
+  // ---------------- 名前の入力モーダル（F-02, F-03, F-06） ----------------
+
+  var inputOverlay = document.getElementById('input-overlay');
+  var inputTextEl = document.getElementById('input-text');
+  var inputModalTitle = document.getElementById('input-modal-title');
+  var inputModalLabel = document.getElementById('input-modal-label');
+  var inputModalCounter = document.getElementById('input-modal-counter');
+  var inputModalError = document.getElementById('input-modal-error');
+  var inputModalOk = document.getElementById('input-modal-ok');
+  var inputAction = null;
+
+  // opts: { title, label, max, value, okLabel, onOk }
+  function askInput(opts) {
+    inputModalTitle.textContent = opts.title;
+    inputModalLabel.textContent = opts.label;
+    inputTextEl.dataset.max = String(opts.max);
+    inputTextEl.value = opts.value || '';
+    inputModalOk.textContent = opts.okLabel;
+    inputModalError.hidden = true;
+    inputAction = opts.onOk;
+    updateCounter(inputTextEl, inputModalCounter);
+    inputOverlay.hidden = false;
+    inputTextEl.focus();
+    inputTextEl.select();
+  }
+
+  function closeInput() {
+    inputOverlay.hidden = true;
+    inputAction = null;
+  }
+
+  function submitInput() {
+    var value = inputTextEl.value.trim();
+    // 空文字は不可。alert ではなく入力欄の直下に出し、どこが問題か示す
+    if (!value) {
+      inputModalError.textContent = '入力してください。';
+      inputModalError.hidden = false;
+      inputTextEl.focus();
+      return;
+    }
+    var action = inputAction;
+    closeInput();
+    if (action) action(value);
+  }
+
+  inputModalOk.addEventListener('click', submitInput);
+  document.getElementById('input-modal-cancel').addEventListener('click', closeInput);
+  document.getElementById('input-modal-close').addEventListener('click', closeInput);
+  inputOverlay.addEventListener('click', function (e) {
+    if (e.target === inputOverlay) closeInput();
+  });
+  inputTextEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') submitInput();
+  });
+  inputTextEl.addEventListener('input', function () {
+    updateCounter(inputTextEl, inputModalCounter);
+    if (inputTextEl.value.trim()) inputModalError.hidden = true;
+  });
+
+  // ---------------- 削除の確認モーダル（F-04, F-08, F-15） ----------------
+
+  var confirmOverlay = document.getElementById('confirm-overlay');
+  var confirmMessage = document.getElementById('confirm-message');
+  var confirmOkBtn = document.getElementById('confirm-ok');
+  var confirmCancelBtn = document.getElementById('confirm-cancel');
+  var confirmAction = null;
+
+  // 削除は取り消せない（Undo は対象外）ため、必ずこれを挟む
+  function askConfirm(message, onOk) {
+    confirmMessage.textContent = message;
+    confirmAction = onOk;
+    confirmOverlay.hidden = false;
+    // 誤操作を防ぐのが目的なので、初期フォーカスは「キャンセル」に置く
+    confirmCancelBtn.focus();
+  }
+
+  function closeConfirm() {
+    confirmOverlay.hidden = true;
+    confirmAction = null;
+  }
+
+  confirmOkBtn.addEventListener('click', function () {
+    var action = confirmAction;
+    closeConfirm();
+    if (action) action();
+  });
+
+  confirmCancelBtn.addEventListener('click', closeConfirm);
+  confirmOverlay.addEventListener('click', function (e) {
+    if (e.target === confirmOverlay) closeConfirm();
+  });
+
   // ---------------- 列の操作 ----------------
 
   function moveList(list, delta) {
@@ -492,68 +613,83 @@
   }
 
   function addList() {
-    var name = prompt('リスト名（' + MAX_LIST_NAME + '文字まで）', '');
-    if (name === null) return;
-    name = name.trim();
-    if (!name) return;
-    if (name.length > MAX_LIST_NAME) name = name.slice(0, MAX_LIST_NAME);
-
-    // 「完了」の左隣に挿入する
-    var done = doneList();
-    sortedLists().forEach(function (l) {
-      if (l.position >= done.position) l.position += 1;
+    askInput({
+      title: 'リストの追加',
+      label: 'リスト名',
+      max: MAX_LIST_NAME,
+      okLabel: '追加',
+      onOk: function (name) {
+        // 「完了」の左隣に挿入する
+        var done = doneList();
+        sortedLists().forEach(function (l) {
+          if (l.position >= done.position) l.position += 1;
+        });
+        state.lists.push({
+          id: id(),
+          name: name,
+          position: done.position - 1,
+          isDefault: false,
+          isFixedLast: false
+        });
+        render();
+      }
     });
-    state.lists.push({
-      id: id(),
-      name: name,
-      position: done.position - 1,
-      isDefault: false,
-      isFixedLast: false
-    });
-    render();
   }
 
   function renameList(list) {
-    var name = prompt('リスト名（' + MAX_LIST_NAME + '文字まで）', list.name);
-    if (name === null) return;
-    name = name.trim();
-    if (!name) return;
-    list.name = name.slice(0, MAX_LIST_NAME);
-    render();
+    askInput({
+      title: 'リスト名の変更',
+      label: 'リスト名',
+      max: MAX_LIST_NAME,
+      value: list.name,
+      okLabel: '保存',
+      onOk: function (name) {
+        list.name = name;
+        render();
+      }
+    });
   }
 
   function deleteList(list) {
     var count = cardsOf(list.id).length;
-    var message = '「' + list.name + '」を削除します。'
-      + (count > 0 ? '\n中のタスク ' + count + ' 件も一緒に削除されます。' : '')
-      + '\nよろしいですか？';
-    if (!confirm(message)) return;
-    state.cards = state.cards.filter(function (c) { return c.listId !== list.id; });
-    state.lists = state.lists.filter(function (l) { return l.id !== list.id; });
-    sortedLists().forEach(function (l, i) { l.position = i + 1; });
-    render();
+    var message = 'リスト「' + list.name + '」を削除します。\n'
+      // 中身ごと消えることは文言で明示する（機能仕様書 1.2）
+      + (count > 0
+        ? '中のタスク ' + count + ' 件も一緒に削除されます。\n'
+        : '')
+      + 'この操作は取り消せません。';
+    askConfirm(message, function () {
+      state.cards = state.cards.filter(function (c) { return c.listId !== list.id; });
+      state.lists = state.lists.filter(function (l) { return l.id !== list.id; });
+      sortedLists().forEach(function (l, i) { l.position = i + 1; });
+      render();
+    });
   }
 
   // ---------------- タスクの操作 ----------------
 
   function addCard(list) {
-    var title = prompt('タスクのタイトル（' + MAX_TITLE + '文字まで）', '');
-    if (title === null) return;
-    title = title.trim();
-    if (!title) return;
-    // 列の先頭に入れる（F-06）。既存タスクは後ろへずれる
-    state.cards.push({
-      id: id(),
-      listId: list.id,
-      title: title.slice(0, MAX_TITLE),
-      description: '',
-      dueAt: null,
-      hasDueTime: false,
-      position: 0
+    askInput({
+      title: 'タスクの追加',
+      label: 'タイトル',
+      max: MAX_TITLE,
+      okLabel: '追加',
+      onOk: function (title) {
+        // 列の先頭に入れる（F-06）。既存タスクは後ろへずれる
+        state.cards.push({
+          id: id(),
+          listId: list.id,
+          title: title,
+          description: '',
+          dueAt: null,
+          hasDueTime: false,
+          position: 0
+        });
+        renumber(list.id);
+        // 完了列は折りたたまれていても先頭は見えるので展開は不要
+        render();
+      }
     });
-    renumber(list.id);
-    // 完了列は折りたたまれていると先頭が見えるので展開は不要
-    render();
   }
 
   // 詳細モーダルからのリスト移動（F-23）。移動先は末尾
@@ -569,12 +705,13 @@
   }
 
   function deleteCard(c) {
-    if (!confirm('「' + c.title + '」を削除します。よろしいですか？')) return;
-    var listId = c.listId;
-    state.cards = state.cards.filter(function (x) { return x.id !== c.id; });
-    delete state.selectedCardIds[c.id];
-    renumber(listId);
-    render();
+    askConfirm('タスク「' + c.title + '」を削除します。\nこの操作は取り消せません。', function () {
+      var listId = c.listId;
+      state.cards = state.cards.filter(function (x) { return x.id !== c.id; });
+      delete state.selectedCardIds[c.id];
+      renumber(listId);
+      render();
+    });
   }
 
   function deleteSelected() {
@@ -582,16 +719,14 @@
     var targets = cardsOf(done.id).filter(function (c) {
       return !!state.selectedCardIds[c.id];
     });
-    if (targets.length === 0) {
-      alert('削除するタスクが選択されていません。');
-      return;
-    }
-    if (!confirm('選択した ' + targets.length + ' 件を削除します。よろしいですか？')) return;
-    targets.forEach(function (c) { delete state.selectedCardIds[c.id]; });
-    var ids = targets.map(function (c) { return c.id; });
-    state.cards = state.cards.filter(function (c) { return ids.indexOf(c.id) === -1; });
-    renumber(done.id);
-    render();
+    if (targets.length === 0) return; // ボタン自体を無効にしてあるので通常は来ない
+    askConfirm('選択した ' + targets.length + ' 件のタスクを削除します。\nこの操作は取り消せません。', function () {
+      targets.forEach(function (c) { delete state.selectedCardIds[c.id]; });
+      var ids = targets.map(function (c) { return c.id; });
+      state.cards = state.cards.filter(function (c) { return ids.indexOf(c.id) === -1; });
+      renumber(done.id);
+      render();
+    });
   }
 
   // ---------------- 詳細モーダル（F-07） ----------------
@@ -603,6 +738,7 @@
   var timeInput = document.getElementById('input-due-time');
   var hasTimeInput = document.getElementById('input-has-due-time');
   var listInput = document.getElementById('input-list');
+  var titleError = document.getElementById('error-title');
   var editingCardId = null;
 
   function openModal(c) {
@@ -629,6 +765,7 @@
       timeInput.value = '';
     }
     hasTimeInput.checked = c.hasDueTime;
+    titleError.hidden = true;
     syncTimeInput();
     updateCounter(titleInput, document.getElementById('counter-title'));
     updateCounter(descInput, document.getElementById('counter-description'));
@@ -647,10 +784,13 @@
 
     var title = titleInput.value.trim();
     if (!title) {
-      alert('タイトルは必須です。');
+      // 入力欄の直下に出し、どこが問題か分かるようにする
+      titleError.textContent = 'タイトルは必須です。';
+      titleError.hidden = false;
       titleInput.focus();
       return;
     }
+    titleError.hidden = true;
     c.title = title;
     c.description = descInput.value;
 
@@ -698,7 +838,11 @@
     if (e.target === overlayEl) closeModal(); // 背景クリックで閉じる
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !overlayEl.hidden) closeModal();
+    if (e.key !== 'Escape') return;
+    // 前面にあるものから順に閉じる
+    if (!confirmOverlay.hidden) closeConfirm();
+    else if (!inputOverlay.hidden) closeInput();
+    else if (!overlayEl.hidden) closeModal();
   });
 
   // ---------------- 文字数カウンタ（E-01, E-02） ----------------

@@ -18,7 +18,12 @@
   /* 期限による色分け（F-11） */
   --color-danger: #b3261e;        /* 白文字とのコントラスト 6.0:1 */
   --color-danger-text: #ffffff;
-  --color-warn: #b8860b;          /* 黄系。ボーダーのみに使う */
+  /* 黄系。ボーダーのみに使う。
+     明るい黄は白背景との輝度差がほとんどなく（#fffb00 で 1.07:1）、
+     単色のボーダーでは輪郭が消える。UI部品の識別に必要な 3:1 は、
+     内側に重ねる濃い縁（--color-warn-edge, 白に対し 4.3:1）が担う。 */
+  --color-warn: #fffb00;
+  --color-warn-edge: #857a00;
 
   /* 完了列のタスク（機能仕様書 2.7） */
   --color-done-bg: #e4e6ea;
@@ -236,20 +241,102 @@ body {
 
 .card__title:hover { text-decoration: underline; }
 
+/* 期限とゴミ箱を1行に収める。ゴミ箱は右端 */
+.card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  min-height: 20px;
+}
+
 .card__due {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-sub);
 }
 
-.card__actions {
-  display: flex;
-  gap: 3px;
-  margin-top: 8px;
+.card__meta .btn--trash { margin-left: auto; }
+
+/* ---------------- ゴミ箱アイコン（画像・絵文字を使わない） ----------------
+   currentColor で描くため、完了列や期限超過で文字色が変わっても追従する。
+   絵文字（🗑）はフォントによって字形も色も変わるため使わない。 */
+
+/* 背景と枠を持たせない。アイコンはタスクの文字色で描くため、
+   ボタンに白い下地があると赤いタスクの上で白×白になって消える */
+.btn--trash {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  background: transparent;
+  border-color: transparent;
 }
 
-.card__actions .card__delete { margin-left: auto; }
+/* ホバーの下地は半透明のグレー。白いタスクでも赤いタスクでも
+   下地だけが変化し、currentColor で描いたアイコンは埋もれない */
+.btn--trash:hover {
+  background: rgba(127, 127, 127, 0.3);
+  border-color: transparent;
+}
+
+.icon-trash {
+  position: relative;
+  width: 13px;
+  height: 14px;
+  display: block;
+}
+
+/* フタと、その上の取っ手 */
+.icon-trash__lid {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 13px;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.icon-trash__lid::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 4px;
+  width: 5px;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+/* 本体。左右と底だけの枠にして、上辺はフタに任せる */
+.icon-trash__body {
+  position: absolute;
+  top: 5.5px;
+  left: 2px;
+  width: 9px;
+  height: 8.5px;
+  border: 1.5px solid currentColor;
+  border-top: none;
+  border-radius: 0 0 2px 2px;
+}
+
+/* 中の縦線2本。1本を描いて box-shadow でもう1本ずらして出す */
+.icon-trash__body::before {
+  content: "";
+  position: absolute;
+  top: 1.5px;
+  left: 1.5px;
+  width: 1px;
+  height: 4px;
+  background: currentColor;
+  box-shadow: 3px 0 0 currentColor;
+}
 
 /* 期限による色分け（F-11） */
 .card--overdue,
@@ -263,7 +350,14 @@ body {
 .card--today .card__due { color: var(--color-danger-text); }
 
 .card--tomorrow { border-color: var(--color-danger); }
-.card--soon { border-color: var(--color-warn); }
+
+/* 明るい黄のボーダー＋内側に濃い縁1本。縁が輪郭の識別を担う */
+.card--soon {
+  border-color: var(--color-warn);
+  box-shadow:
+    inset 0 0 0 1px var(--color-warn-edge),
+    0 1px 1px rgba(9, 30, 66, 0.2);
+}
 
 /* 完了列での上書き（機能仕様書 2.7）。期限の色分けより優先する */
 .card--done,
@@ -299,6 +393,9 @@ body {
 
 .modal-overlay[hidden] { display: none; }
 
+/* 確認モーダルは前面に出す（詳細モーダルから削除を呼ぶ場合に重なる） */
+#confirm-overlay { z-index: 55; }
+
 .modal {
   width: min(640px, 100%);
   max-height: 90vh;
@@ -307,6 +404,23 @@ body {
   background: var(--color-surface);
   border-radius: 8px;
 }
+
+.modal--narrow { width: min(440px, 100%); }
+
+.confirm__message {
+  margin: 0;
+  line-height: 1.8;
+  white-space: pre-wrap;   /* 対象名と補足を改行で分けて見せる */
+  overflow-wrap: anywhere;
+}
+
+.btn--danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-danger-text);
+}
+
+.btn--danger:hover:not(:disabled) { background: #8f1e18; }
 
 .modal__header,
 .modal__footer {
@@ -383,6 +497,15 @@ body {
   color: var(--color-text-sub);
   font-variant-numeric: tabular-nums;
 }
+
+.field__error {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-danger);
+}
+
+.field__error[hidden] { display: none; }
 
 .field__counter--over {
   color: var(--color-counter-over);
