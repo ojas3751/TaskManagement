@@ -8,7 +8,7 @@ Web 開発の学習を副次目的としており、要件定義から順に文�
 
 | 層 | 技術 |
 | --- | --- |
-| バックエンド | Java 25 (LTS) ／ Spring Boot 4.0 ／ Gradle (Kotlin DSL) |
+| バックエンド | Java 25 (LTS) ／ Spring Boot 4.1 ／ Gradle (Kotlin DSL) |
 | DB アクセス | Spring Data JPA / Hibernate ／ マイグレーションは Flyway |
 | フロントエンド | React ／ TypeScript ／ Vite（**Next.js は使わない**） |
 | データベース | PostgreSQL 17（Windows へ直接インストール。**Docker は使わない**） |

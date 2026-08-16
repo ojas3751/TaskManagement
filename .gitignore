@@ -11,6 +11,9 @@ __pycache__/
 # ビルド成果物
 dist/
 build/
+.gradle/
+bin/
+out/
 
 # OS / エディタ
 Thumbs.db

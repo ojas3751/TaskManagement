@@ -405,7 +405,7 @@ P-2（外部公開しない）かつ認証を持たないため、実装する�
 | 分類 | 採用 | 選定理由 |
 | --- | --- | --- |
 | Java | **JDK 25（LTS）** | 最新の LTS。配布は Temurin（Eclipse Adoptium） |
-| フレームワーク | **Spring Boot 4.0.x** | Spring Framework 7 ベース。Web (MVC) / Data JPA / Validation を使用。**日本語の解説記事はまだ少ないため、公式リファレンスを一次情報とする前提で進める** |
+| フレームワーク | **Spring Boot 4.1.x** | Spring Framework 7 ベース。Web MVC / Data JPA / Validation / Flyway を使用。**日本語の解説記事はまだ少ないため、公式リファレンスを一次情報とする前提で進める。** 4系ではスターター名が変わっている（`spring-boot-starter-web` → `spring-boot-starter-webmvc`、`spring-boot-starter-test` → モジュール別の `-test`）ため、**記事を参考にする際は依存の記述をそのまま写さないこと** |
 | ビルドツール | **Gradle（Kotlin DSL）** | Gradle Wrapper（`gradlew`）を同梱するため、Gradle 本体のインストールは不要 |
 | ORM | **Spring Data JPA / Hibernate** | 6.4 の「ORM を使用し、文字列連結で SQL を組み立てない」を構造的に満たす。詳細は [データベース設計](design/database.md) |
 | マイグレーション | **Flyway** | 6.7 の「必ずマイグレーションファイルとして記録し、バージョン管理下に置く」を満たす。**Hibernate の `ddl-auto` は使わない**（スキーマの変更履歴が残らないため） |
@@ -477,7 +477,7 @@ MVP は P-2（外部公開しない）を前提とする。将来クラウドへ
 
 | 項目 | 決定内容 | 決定日 |
 | --- | --- | --- |
-| **技術スタック（言語・フレームワーク）** | **Java 25 ＋ Spring Boot 4.0.x ／ React ＋ Vite ＋ TypeScript ／ PostgreSQL 17。** 課題側からの指定を受けて確定。詳細は 7章 | 2026-08-16 |
+| **技術スタック（言語・フレームワーク）** | **Java 25 ＋ Spring Boot 4.1.x ／ React 19 ＋ Vite ＋ TypeScript ／ PostgreSQL 17。** 課題側からの指定を受けて確定。詳細は 7章 | 2026-08-16 |
 | 構成（フロントとバックエンドを一体にするか分離するか） | **分離。** v0.10 までは一体型（フルスタックフレームワーク）を推奨していたが、**指定されたスタックが分離を前提とするため推奨を取り下げた。** 詳細は 7.3 | 2026-08-16 |
 | ORM の製品 | **Spring Data JPA / Hibernate** | 2026-08-16 |
 | マイグレーションツール | **Flyway。** Spring Data JPA には ORM 内蔵のマイグレーション機構が無く、`ddl-auto` は変更履歴が残らないため、独立したツールを採用した | 2026-08-16 |

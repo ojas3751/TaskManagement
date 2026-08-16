@@ -125,6 +125,7 @@ $env:DB_PASSWORD = "<2.4 で設定したパスワード>"
 ```powershell
 cd backend
 .\gradlew build          # 依存の取得とビルド（Gradle 本体のインストールは不要）
+                         # ※ 2.5 の環境変数を設定していないとテストが失敗する
 
 cd ..\frontend
 npm ci                   # package-lock.json どおりに取得する
