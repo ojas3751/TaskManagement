@@ -1,4 +1,4 @@
-# 運用手順 v1.0
+# 運用手順 v1.1
 
 **関連文書**: [要件定義書](requirements.md) ／ [データベース設計](design/database.md) ／ [開発計画](development-plan.md) ／ [文書一覧](README.md)
 
@@ -9,6 +9,7 @@
 | 版 | 日付 | 変更内容 |
 | --- | --- | --- |
 | 0.1 | 2026-08-13 | 要件定義書 v0.7 から分割して初版作成。システム構成とバックアップ手順のみ記載。**起動手順は未記載** |
+| **1.1** | **2026-08-17** | 要件定義書 v1.1 を反映し、**DB を Docker で動かす手順に全面的に書き換えた。** 2章の初回セットアップから PostgreSQL の直接インストール・ロール作成の手作業を削除し、`compose.yaml` と `.env` の説明に置き換え。3章の起動手順に `docker compose up -d` を追加。4章のバックアップを `docker compose exec` 経由に変更し、**ボリューム削除の警告を復活**。**本書の手順は実際に実行して確認済み** |
 | **1.0** | **2026-08-16** | 要件定義書 v1.0（技術スタック確定）を反映し、**保留していた起動手順を記載して本書を完成させた。** **Docker を使わない方針に変更**したため、システム構成図・バックアップの注意事項を全面的に書き換え。「初回セットアップ」の章を新設 |
 
 ---
@@ -34,10 +35,14 @@
 │     │                                             │
 │     │  TCP  localhost:5432                        │
 │     ▼                                             │
-│   PostgreSQL（Windows サービスとして常駐）           │
-│     │                                             │
-│     ▼                                             │
-│   データディレクトリ（PostgreSQL の data フォルダ）    │
+│   ┌─ Docker Desktop ─────────────────────────┐   │
+│   │                                           │   │
+│   │   PostgreSQL 17（コンテナ）                 │   │
+│   │     │                                     │   │
+│   │     ▼                                     │   │
+│   │   ボリューム pgdata（データの保存先）         │   │
+│   │                                           │   │
+│   └───────────────────────────────────────────┘   │
 │                                                   │
 └───────────────────────────────────────────────────┘
               ※ 外部からのアクセスは受け付けない（P-2）
@@ -47,7 +52,9 @@
 
 **利用者が開くのは `localhost:3000` だけでよい。** Vite 開発サーバーが `/api` へのリクエストだけを 8080 番へ転送するため、ブラウザから見た通信先は1つに見える。この構成により CORS の設定も不要になる。
 
-利用のたびに**起動が必要なサーバーは2つ**（Spring Boot と Vite）。**PostgreSQL は Windows サービスとして自動起動する**ため、起動操作は不要（前提条件 P-4）。
+利用のたびに**起動が必要なものは3つ**（PostgreSQL のコンテナ、Spring Boot、Vite）。前提条件 P-4 にあたる。
+
+**PostgreSQL はコンテナの中だけに存在し、ホストの Windows にはインストールしない。** ホストから見えるのは `localhost:5432` というポートだけで、`psql` などのコマンドもコンテナの中のものを使う。
 
 ---
 
@@ -72,66 +79,62 @@ node -v
 npm -v
 ```
 
-### 2.3 PostgreSQL 17 のインストール
+### 2.3 Docker Desktop のインストール
 
-[PostgreSQL 公式](https://www.postgresql.org/download/windows/) の Windows インストーラを実行する。
+[Docker Desktop](https://www.docker.com/products/docker-desktop/) の Windows 版を入れる。**PostgreSQL 自体はインストールしない** — コンテナとして動かす（[要件定義書](requirements.md) の「PostgreSQL を Docker で動かす判断」）。
 
-| 設定項目 | 値 |
-| --- | --- |
-| インストールするコンポーネント | PostgreSQL Server、**Command Line Tools**（`psql` と `pg_dump` が入る）。pgAdmin と Stack Builder は任意 |
-| ポート | `5432`（既定のまま） |
-| ロケール | 既定のまま |
-| `postgres` ユーザーのパスワード | 任意。**忘れないこと**（後で接続設定に使う） |
-
-インストール後、Windows サービスとして自動起動する。
+インストール後、Docker Desktop を起動してエンジンが動いていることを確認する。
 
 ```powershell
-Get-Service postgresql*    # Status が Running であること
+docker version           # Client と Server の両方が表示されれば成功
+docker compose version
 ```
 
-> **Docker は使わない。** 理由は [要件定義書](requirements.md) の「Docker を使わない判断」を参照。
+> `docker` が「認識されません」と出る場合、インストール直後で PATH が反映されていないことが多い。**PowerShell を開き直す**（それでも駄目なら PC を再起動する）。
 
-### 2.4 データベースとロールの作成
+### 2.4 DB のパスワードを決める
+
+リポジトリのルートで、`.env.example` をコピーして `.env` を作り、パスワードを書く。
 
 ```powershell
-# psql の場所は環境に合わせて読み替える
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres
+Copy-Item .env.example .env
 ```
 
-```sql
-CREATE ROLE taskmanagement WITH LOGIN PASSWORD '<任意のパスワード>';
-CREATE DATABASE taskmanagement OWNER taskmanagement;
-CREATE DATABASE taskmanagement_test OWNER taskmanagement;
-\q
+```
+DB_PASSWORD=<任意のパスワード>
 ```
 
-`taskmanagement_test` は自動テスト用。本番用のデータと混ざらないよう分けておく。
+**`.env` はコミットされない**（`.gitignore` で除外済み。[要件定義書](requirements.md) の「機密情報の管理」）。`docker compose` は同じディレクトリの `.env` を自動で読む。
 
-### 2.5 接続情報の設定
+> **ロールとデータベースの作成は不要。** `compose.yaml` の `environment` に書いてあるため、コンテナの初回起動時に自動で作られる。
 
-**接続情報はリポジトリにコミットしない**（[要件定義書](requirements.md) の「機密情報の管理」）。環境変数で渡す。
+### 2.5 バックエンドへ接続情報を渡す
+
+**Spring Boot は `.env` を読まない。** 同じ値を Windows のユーザー環境変数として設定する。一度設定すれば以降どのターミナルでも有効になる。
 
 ```powershell
-# PowerShell のプロファイルなどに書いておく
-$env:DB_URL      = "jdbc:postgresql://localhost:5432/taskmanagement"
-$env:DB_USERNAME = "taskmanagement"
-$env:DB_PASSWORD = "<2.4 で設定したパスワード>"
+[Environment]::SetEnvironmentVariable("DB_URL","jdbc:postgresql://localhost:5432/taskmanagement","User")
+[Environment]::SetEnvironmentVariable("DB_USERNAME","taskmanagement","User")
+[Environment]::SetEnvironmentVariable("DB_PASSWORD","<2.4 と同じパスワード>","User")
 ```
 
-`backend/src/main/resources/application.properties` 側はこの環境変数を参照する形にする。
+設定後、**PowerShell を開き直す**（既に開いているターミナルには反映されない）。
 
-### 2.6 依存パッケージの取得とマイグレーション
+> **パスワードを2箇所に書くことになる**（`.env` と環境変数）。**片方だけ変えると接続できなくなる**ため、変更するときは必ず両方を直すこと。よくある詰まりどころで、症状は「DB は起動しているのにバックエンドが認証エラーで落ちる」。
+>
+> なお `.env` 側を変えても、**既に作られたボリュームのパスワードは変わらない**。作り直す場合は 4.3 を参照。
+
+### 2.6 依存パッケージの取得
 
 ```powershell
 cd backend
-.\gradlew build          # 依存の取得とビルド（Gradle 本体のインストールは不要）
-                         # ※ 2.5 の環境変数を設定していないとテストが失敗する
+.\gradlew build -x test   # 依存の取得とビルド（Gradle 本体のインストールは不要）
 
 cd ..\frontend
-npm ci                   # package-lock.json どおりに取得する
+npm ci                    # package-lock.json どおりに取得する
 ```
 
-**マイグレーション（Flyway）は Spring Boot の起動時に自動で適用される**ため、個別の実行は不要。空の DB に対して起動すれば、テーブルの作成とデフォルト3列の投入まで済む（[データベース設計](design/database.md) の「スキーマの管理」）。
+**マイグレーション（Flyway）は Spring Boot の起動時に自動で適用される**ため、個別の実行は不要（[データベース設計](design/database.md) の「スキーマの管理」）。
 
 ---
 
@@ -141,20 +144,35 @@ npm ci                   # package-lock.json どおりに取得する
 
 | # | 操作 | コマンド |
 | --- | --- | --- |
-| 1 | PostgreSQL の確認（通常は不要） | `Get-Service postgresql*` |
-| 2 | バックエンドを起動 | `cd backend; .\gradlew bootRun` |
-| 3 | フロントエンドを起動（別ターミナル） | `cd frontend; npm run dev` |
-| 4 | ブラウザで開く | `localhost:3000` |
+| 1 | Docker Desktop を起動する | （タスクトレイに常駐していれば不要） |
+| 2 | DB のコンテナを起動 | `docker compose up -d` |
+| 3 | バックエンドを起動 | `cd backend; .\gradlew bootRun` |
+| 4 | フロントエンドを起動（別ターミナル） | `cd frontend; npm run dev` |
+| 5 | ブラウザで開く | `localhost:3000` |
 
-停止はそれぞれのターミナルで `Ctrl + C`。
+DB が受付可能になったかは次で確認できる。
+
+```powershell
+docker compose ps         # STATUS が Up ... (healthy) になっていること
+```
+
+### 停止
+
+| 対象 | 操作 |
+| --- | --- |
+| バックエンド／フロントエンド | それぞれのターミナルで `Ctrl + C` |
+| DB のコンテナ | `docker compose down` |
+
+> **`docker compose down` に `-v` を付けないこと。** データが消える。詳細は 4.3。
 
 **起動を忘れた場合の画面**は [機能仕様書](functional-spec.md) の「通信エラー」を参照。エラーメッセージが、起動していないのがバックエンドなのか DB なのかを示す。
 
 | 症状 | 原因 |
 | --- | --- |
-| 全面に「サーバーが起動していません」 | 手順2（バックエンド）を実行していない |
-| 「データベースに接続できません」 | PostgreSQL のサービスが停止している、または接続情報が誤っている |
-| ブラウザが `localhost:3000` に接続できない | 手順3（フロントエンド）を実行していない |
+| 全面に「サーバーが起動していません」 | 手順3（バックエンド）を実行していない |
+| 「データベースに接続できません」 | 手順1〜2（Docker Desktop とコンテナ）を実行していない |
+| ブラウザが `localhost:3000` に接続できない | 手順4（フロントエンド）を実行していない |
+| バックエンドが起動途中で認証エラーになる | `.env` と環境変数のパスワードが食い違っている（2.5 の注意） |
 
 ---
 
@@ -162,28 +180,44 @@ npm ci                   # package-lock.json どおりに取得する
 
 **自動バックアップ機能は実装しない**（F-20）。データが失われて困る場合は、以下の手順で手動退避する。
 
+**`pg_dump` などのコマンドはホストに入っていない。** コンテナの中のものを `docker compose exec` で呼び出す。
+
 ### 4.1 退避
 
 ```powershell
-pg_dump -h localhost -U taskmanagement -d taskmanagement -F c -f backup_YYYYMMDD.dump
+docker compose exec -T db pg_dump -U taskmanagement -d taskmanagement -F c > backup_20260817.dump
 ```
+
+`-T` は擬似 TTY を無効にする指定。**付けないとダンプファイルが壊れる**（改行コードが変換されるため）。
 
 ### 4.2 復元
 
 ```powershell
-pg_restore -h localhost -U taskmanagement -d taskmanagement --clean backup_YYYYMMDD.dump
+Get-Content backup_20260817.dump -AsByteStream -Raw | docker compose exec -T db pg_restore -U taskmanagement -d taskmanagement --clean
 ```
 
 ### 4.3 注意
 
-> **PostgreSQL をアンインストールすると、データディレクトリごと削除される場合がある。** 再インストールや版の入れ替えを行う前に、必ず 4.1 の手順で退避すること。
+> **`docker compose down -v` を実行するとボリューム `pgdata` が削除され、DB のデータは完全に失われる。** コンテナだけを止めたい場合は `-v` を付けずに `docker compose down` を実行すること。
 >
-> 同様に、`DROP DATABASE taskmanagement` を実行すると復旧できない。**検証用の操作は `taskmanagement_test` に対して行う。**
+> 同様に `docker volume prune` も未使用ボリュームを削除するため、実行前に対象を確認すること。
+>
+> `DROP DATABASE taskmanagement` を実行した場合も復旧できない。
 
-### 4.4 想定されるデータ消失
+### 4.4 コンテナを作り直す
+
+DB のパスワードを変えたい場合など、**初回起動時にしか実行されない設定をやり直したいとき**は、ボリュームごと作り直す必要がある。
+
+```powershell
+# 必要なら 4.1 で退避してから
+docker compose down -v      # ボリュームごと削除（データが消える）
+docker compose up -d        # .env の値で作り直される
+```
+
+### 4.5 想定されるデータ消失
 
 | 原因 | 対策 |
 | --- | --- |
 | PC の故障 | 上記の手動退避のみ |
 | DB の誤操作 | 同上。Undo 機能はない |
-| **PostgreSQL のアンインストール／再インストール** | 4.3 の注意を守る |
+| **`docker compose down -v` / `docker volume prune`** | 4.3 の注意を守る |

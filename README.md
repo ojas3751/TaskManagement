@@ -11,7 +11,7 @@ Web 開発の学習を副次目的としており、要件定義から順に文�
 | バックエンド | Java 25 (LTS) ／ Spring Boot 4.1 ／ Gradle (Kotlin DSL) |
 | DB アクセス | Spring Data JPA / Hibernate ／ マイグレーションは Flyway |
 | フロントエンド | React ／ TypeScript ／ Vite（**Next.js は使わない**） |
-| データベース | PostgreSQL 17（Windows へ直接インストール。**Docker は使わない**） |
+| データベース | PostgreSQL 17（**Docker コンテナ**。構成は `compose.yaml`） |
 
 選定理由は [要件定義書](docs/requirements.md) の「技術スタック」に記載。
 
@@ -25,22 +25,27 @@ Web 開発の学習を副次目的としており、要件定義から順に文�
                                         │
                                         ▼
                                      PostgreSQL (localhost:5432)
+                                       ※ Docker コンテナ
 ```
 
 利用者が開くのは `localhost:3000` だけでよい。
 
 ```
-backend/    Spring Boot（Gradle プロジェクト）
-frontend/   React + Vite
-docs/       設計ドキュメント
-mock/       画面モック（素の HTML/CSS/JS。バックエンド不要）
+backend/       Spring Boot（Gradle プロジェクト）
+frontend/      React + Vite
+compose.yaml   PostgreSQL のコンテナ構成
+docs/          設計ドキュメント
+mock/          画面モック（素の HTML/CSS/JS。バックエンド不要）
 ```
 
 ## 起動
 
 ```powershell
+docker compose up -d              # DB
 cd backend;  .\gradlew bootRun    # ターミナル1
 cd frontend; npm run dev          # ターミナル2
 ```
+
+停止は `Ctrl + C` と `docker compose down`（**`-v` を付けるとデータが消える**）。
 
 初回セットアップ（JDK・Node.js・PostgreSQL の導入、DB とロールの作成、接続情報の設定）は **[運用手順](docs/operations.md)** を参照。

@@ -2,7 +2,7 @@
 
 **関連文書**: [要件定義書](../requirements.md) ／ [機能仕様書](../functional-spec.md) ／ [API設計](api.md) ／ [運用手順](../operations.md) ／ [文書一覧](../README.md)
 
-DB は **PostgreSQL 17**（Windows へ直接インストール。Docker は使わない）。アクセスは **Spring Data JPA / Hibernate** 経由とする（[要件定義書](../requirements.md) の「技術スタック」「セキュリティ」を参照）。
+DB は **PostgreSQL 17**（Docker コンテナで実行。構成は リポジトリルートの `compose.yaml`）。アクセスは **Spring Data JPA / Hibernate** 経由とする（[要件定義書](../requirements.md) の「技術スタック」「セキュリティ」を参照）。
 
 > **本文では「タスク」と書き、テーブル名は `cards` のままとする。** この対応は意図的なもの。理由は [要件定義書](../requirements.md) の「用語」を参照。
 

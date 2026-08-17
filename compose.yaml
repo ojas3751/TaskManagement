@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:17
+    container_name: taskmanagement-db
+    environment:
+      # ロールとデータベースは、ボリュームが空のとき（初回起動時）だけ自動で作られる。
+      # 後から値を変えても既存のボリュームには反映されない点に注意。
+      POSTGRES_USER: taskmanagement
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: taskmanagement
+      TZ: Asia/Tokyo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # 「コンテナは起動したが PostgreSQL はまだ接続を受け付けていない」状態と区別する。
+      test: ["CMD-SHELL", "pg_isready -U taskmanagement -d taskmanagement"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  # 名前付きボリューム。コンテナを作り直してもデータは残るが、
+  # docker compose down -v の -v を付けると削除される。
+  pgdata:
