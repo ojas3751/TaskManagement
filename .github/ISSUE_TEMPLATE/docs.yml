@@ -1,0 +1,27 @@
+name: ドキュメント
+description: 設計文書・README を追加または更新する
+labels: ["docs"]
+body:
+  - type: input
+    id: target
+    attributes:
+      label: 対象ファイル
+      placeholder: docs/requirements.md
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 変更する理由
+      description: 何が変わったから文書を直すのか。決定が変わったのなら、その決定も書く。
+      placeholder: 移動ボタン（F-12）を作らない方針にしたため、開発計画の Step 8 と Step 11 の記述が実態と合わなくなった。
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 変更内容
+    validations:
+      required: true

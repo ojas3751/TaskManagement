@@ -1,0 +1,43 @@
+name: バグ
+description: 期待どおりに動かないところを直す
+labels: ["fix"]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: 番号を振って、そのとおりに操作すれば再現する形で書く。
+      placeholder: |
+        1. localhost:3000 を開く
+        2. 「やること」列にタスクを追加する
+        3. ブラウザをリロードする
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した挙動
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動
+      description: エラーメッセージやログがあれば貼る。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 発生箇所の見当
+      options:
+        - わからない
+        - frontend（React 側）
+        - backend（Spring Boot 側）
+        - db（PostgreSQL / Flyway）
+        - infra（Docker・開発環境）
+    validations:
+      required: true

@@ -1,0 +1,43 @@
+name: 機能
+description: 新しい機能を追加する
+labels: ["feat"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 何を作るか
+      description: 実現したい振る舞いを、利用者から見える形で書く。
+      placeholder: 詳細モーダルからリストを選んでタスクを移動できるようにする。
+    validations:
+      required: true
+
+  - type: input
+    id: requirement-id
+    attributes:
+      label: 対応する要件 ID
+      description: docs/requirements.md の F-xx / E-xx。無ければ「なし」。
+      placeholder: F-23
+    validations:
+      required: true
+
+  - type: input
+    id: step
+    attributes:
+      label: 対応する Step
+      description: docs/development-plan.md の Step 番号。マイルストーンにも設定する。
+      placeholder: Step 8
+
+  - type: textarea
+    id: done
+    attributes:
+      label: 完了の目安
+      description: 何ができたら閉じてよいか。あとで自分が判断できる粒度で書く。
+      placeholder: position の再採番が効き、リロードしても移動後の位置が保たれる。
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: 設計上の判断、参考にした資料、迷っている点など。
