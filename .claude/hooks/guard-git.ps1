@@ -7,8 +7,16 @@
 
 $ErrorActionPreference = 'Stop'
 
+# 入出力を UTF-8 に固定する。既定のコンソール encoding のままだと、日本語の
+# 拒否理由が文字化けして Claude に届き、理由を伝えるという目的を果たせない。
+$utf8 = New-Object Text.UTF8Encoding $false
+try { [Console]::OutputEncoding = $utf8 } catch { }
+
 function Deny([string]$reason) {
-    [Console]::Error.WriteLine($reason)
+    $err = [Console]::OpenStandardError()
+    $bytes = $utf8.GetBytes($reason + "`n")
+    $err.Write($bytes, 0, $bytes.Length)
+    $err.Flush()
     exit 2
 }
 
@@ -16,7 +24,9 @@ function Deny([string]$reason) {
 # 解析に失敗しても素通りさせない。素通りさせると、入力がわずかに崩れる（BOM が
 # 付くなど）だけで防御が丸ごと無効になる。解析できなければ生のテキストをそのまま
 # 判定に掛け、禁止パターンに当たらなければ通す。
-$raw = [Console]::In.ReadToEnd()
+# 標準入力も UTF-8 として明示的に読む（コンソールの encoding に左右されないため）。
+$reader = New-Object IO.StreamReader([Console]::OpenStandardInput(), $utf8)
+$raw = $reader.ReadToEnd()
 if ([string]::IsNullOrWhiteSpace($raw)) { exit 0 }
 
 # BOM と前後の空白を落としてから解析する
