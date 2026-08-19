@@ -49,3 +49,11 @@ cd frontend; npm run dev          # ターミナル2
 停止は `Ctrl + C` と `docker compose down`（**`-v` を付けるとデータが消える**）。
 
 初回セットアップ（JDK・Node.js・PostgreSQL の導入、DB とロールの作成、接続情報の設定）は **[運用手順](docs/operations.md)** を参照。
+
+## 開発の進め方
+
+1 人開発だが、変更は必ず **Issue → ブランチ → PR → マージ** の順で進める。`main` への直接 push は GitHub 側で禁止している。
+
+ブランチ名は `<type>/<Issue番号>-<短い説明>`（例: `feat/12-columns-from-db`）。
+
+詳細は **[作業ルール](CLAUDE.md)** を参照。

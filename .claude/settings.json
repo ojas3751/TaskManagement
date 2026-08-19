@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(\\(Invoke-WebRequest -Uri \"http://127.0.0.1:5173/\" -UseBasicParsing\\).StatusCode)",
+      "PowerShell(\\(Invoke-WebRequest -Uri \"http://127.0.0.1:5173/app.js\" -UseBasicParsing\\).StatusCode)",
+      "PowerShell(git add -A)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-git.ps1\""
+          }
+        ]
+      }
+    ]
+  }
+}
