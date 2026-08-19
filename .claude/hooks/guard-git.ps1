@@ -13,15 +13,22 @@ function Deny([string]$reason) {
 }
 
 # --- 入力（フックのペイロード）を読む -------------------------------------
+# 解析に失敗しても素通りさせない。素通りさせると、入力がわずかに崩れる（BOM が
+# 付くなど）だけで防御が丸ごと無効になる。解析できなければ生のテキストをそのまま
+# 判定に掛け、禁止パターンに当たらなければ通す。
+$raw = [Console]::In.ReadToEnd()
+if ([string]::IsNullOrWhiteSpace($raw)) { exit 0 }
+
+# BOM と前後の空白を落としてから解析する
+$raw = $raw.Trim().TrimStart([char]0xFEFF).Trim()
+
+$command = $null
 try {
-    $raw = [Console]::In.ReadToEnd()
-    if ([string]::IsNullOrWhiteSpace($raw)) { exit 0 }
     $command = ($raw | ConvertFrom-Json).tool_input.command
 } catch {
-    # ペイロードが読めないときは邪魔をしない
-    exit 0
+    $command = $raw
 }
-if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
+if ([string]::IsNullOrWhiteSpace($command)) { $command = $raw }
 
 # --- 判定 -----------------------------------------------------------------
 # git のサブコマンドは「git <グローバルオプション>* <サブコマンド>」の形を取る。
