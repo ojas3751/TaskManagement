@@ -81,14 +81,25 @@ docs/15-update-operations
 
 ---
 
+## 起動ポート
+
+**ポートは固定（3000 / 8080 / 5432）。空いていなければ、別のポートへ逃げずに占有側を止める。**
+
+手順の本体は **[dev-servers スキル](.claude/skills/dev-servers/SKILL.md)** にある。サーバーを起動・停止・再起動するとき、ポートの競合に当たったときは、そちらを見ること。
+
+同じ内容をここにも書くと片方だけ更新されて食い違うため、この節は入口だけに留める。強制は `.claude/hooks/guard-ports.ps1` が行う。
+
+---
+
 ## 禁止事項
 
 - **main への直接コミット・直接 push。** GitHub 側の ruleset でも拒否される。
 - **force push**（`git push --force` / `-f` / `--force-with-lease`）。ブランチを問わず禁止。
 - **Claude が PR をマージすること**（`gh pr merge`）。
 - **Issue を作らずに作業を始めること。**
+- **開発サーバーを規定以外のポートで起動すること**（上の「起動ポート」）。
 
-これらは `.claude/hooks/guard-git.ps1` によってツール実行の時点でブロックされる。ブロックされたら、抜け道を探すのではなく手順に戻ること。
+これらは `.claude/hooks/` 配下のフック（`guard-git.ps1` / `guard-ports.ps1`）によってツール実行の時点でブロックされる。ブロックされたら、抜け道を探すのではなく手順に戻ること。
 
 ---
 
@@ -107,3 +118,4 @@ Issue と PR には **種類を1つ**、**領域を1つ以上**付ける。
 - [README](README.md) — プロジェクトの概要と起動方法
 - [ドキュメント一覧](docs/README.md)
 - [開発計画](docs/development-plan.md) — Step 0〜11。マイルストーンと対応している
+- [dev-servers スキル](.claude/skills/dev-servers/SKILL.md) — 開発サーバーの起動とポートの扱い
