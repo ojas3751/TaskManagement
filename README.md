@@ -48,6 +48,12 @@ cd frontend; npm run dev          # ターミナル2
 
 停止は `Ctrl + C` と `docker compose down`（**`-v` を付けるとデータが消える**）。
 
+**ポートは 3000 / 8080 / 5432 に固定**しており、別のポートでは動かない（proxy 先が食い違うため）。3000 や 8080 が埋まっている場合は、占有しているプロセスを止めてから起動する。
+
+```powershell
+pwsh -File scripts/free-port.ps1 3000 8080
+```
+
 初回セットアップ（JDK・Node.js・PostgreSQL の導入、DB とロールの作成、接続情報の設定）は **[運用手順](docs/operations.md)** を参照。
 
 ## 開発の進め方

@@ -81,14 +81,43 @@ docs/15-update-operations
 
 ---
 
+## 起動ポート
+
+**ポートは固定。空いていなければ、逃げずに占有側を止める。**
+
+| サーバー | ポート | 指定場所 |
+| --- | --- | --- |
+| フロントエンド（Vite） | **3000** | `frontend/vite.config.ts`（`strictPort: true`） |
+| バックエンド（Spring Boot） | **8080** | `backend/src/main/resources/application.properties` |
+| データベース（PostgreSQL） | **5432** | `compose.yaml` |
+
+**別のポートで一時的に起動してはならない。** Vite の proxy 先は `localhost:8080` を直接指しており、ブラウザの入り口は `localhost:3000` の1つだけと決めている（[README](README.md) の「構成」）。片方をずらすと、起動しても画面が動かない。「とりあえず 8081 で立てて動作確認する」は**確認になっていない。**
+
+ポートが埋まっていたら、次のスクリプトで占有プロセスを止めてから、規定のポートで起動する。
+
+```powershell
+pwsh -File scripts/free-port.ps1 8080      # バックエンド
+pwsh -File scripts/free-port.ps1 3000      # フロントエンド
+pwsh -File scripts/free-port.ps1 3000 8080 # まとめて
+```
+
+対象は 3000 と 8080 のみ。**5432 は対象外**で、DB を止めるときは `docker compose down` を使う（プロセスを直接止めるとコンテナの状態と食い違うため）。
+
+止める前に、スクリプトが出す PID とプロセス名を見ること。**自分で起動した開発サーバーだと確認できない場合は、止めずにユーザーへ確認する。**
+
+これらは `.claude/hooks/guard-ports.ps1` によってツール実行の時点で強制される。`--port` や `-Dserver.port=` を付けた起動、およびポートが埋まったままの起動はブロックされる。
+
+---
+
 ## 禁止事項
 
 - **main への直接コミット・直接 push。** GitHub 側の ruleset でも拒否される。
 - **force push**（`git push --force` / `-f` / `--force-with-lease`）。ブランチを問わず禁止。
 - **Claude が PR をマージすること**（`gh pr merge`）。
 - **Issue を作らずに作業を始めること。**
+- **開発サーバーを規定以外のポートで起動すること**（上の「起動ポート」）。
 
-これらは `.claude/hooks/guard-git.ps1` によってツール実行の時点でブロックされる。ブロックされたら、抜け道を探すのではなく手順に戻ること。
+これらは `.claude/hooks/` 配下のフック（`guard-git.ps1` / `guard-ports.ps1`）によってツール実行の時点でブロックされる。ブロックされたら、抜け道を探すのではなく手順に戻ること。
 
 ---
 
