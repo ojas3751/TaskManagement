@@ -37,6 +37,19 @@ try {
 }
 if ([string]::IsNullOrWhiteSpace($command)) { $command = $raw }
 
+# --- 判定に掛けるのは「実行される部分」だけ -------------------------------
+# コミットメッセージや PR 本文は here-string（@'...'@ / @"..."@）でコマンドに
+# 渡される。その中身はデータであって実行されないため、判定から外す。
+#
+# 外さないと、手順やエラーを記録した文章——たとえばこのフックの検証結果に
+# 出てくる `--server.port=8081` ——に反応して、gh pr create や git commit が
+# 止まる。実際にそれで PR の作成がブロックされた。
+#
+# 逆に、here-string の中に本物の起動コマンドを隠して迂回する余地は無い。
+# here-string は文字列であって、そのままでは実行されないため。
+$scanned = [regex]::Replace($command, "@'.*?'@", ' ', 'Singleline')
+$scanned = [regex]::Replace($scanned, '@".*?"@', ' ', 'Singleline')
+
 # --- どのサーバーを起動しようとしているか ---------------------------------
 # バックエンド: gradlew bootRun
 # フロントエンド: npm run dev / npx vite など（build・preview は対象外）
@@ -47,14 +60,14 @@ if ([string]::IsNullOrWhiteSpace($command)) { $command = $raw }
 #
 # `vite` は単語として出てくるだけでは拾わない。実際に起動される位置
 # ——コマンドの先頭、`;`/`&&`/`|` の直後、npx などの直後——に限る。
-$isBackend = $command -cmatch '(?<![\w-])bootRun(\s|$)'
+$isBackend = $scanned -cmatch '(?<![\w-])bootRun(\s|$)'
 
-$viteInvoked = ($command -cmatch '(^|[;&|]\s*)vite(\s|$)') -or
-               ($command -cmatch '(?<![\w-])(npx|pnpm|yarn|bunx)\s+(--\S+\s+)*vite(\s|$)')
+$viteInvoked = ($scanned -cmatch '(^|[;&|]\s*)vite(\s|$)') -or
+               ($scanned -cmatch '(?<![\w-])(npx|pnpm|yarn|bunx)\s+(--\S+\s+)*vite(\s|$)')
 # vite build / vite preview はサーバーを立てないので対象外
-$viteNotServer = $command -cmatch '(?<![\w-])vite\s+(build|preview|optimize)(\s|$)'
+$viteNotServer = $scanned -cmatch '(?<![\w-])vite\s+(build|preview|optimize)(\s|$)'
 
-$isFrontend = ($command -cmatch '(?<![\w-])npm\s+run\s+dev(\s|$)') -or
+$isFrontend = ($scanned -cmatch '(?<![\w-])npm\s+run\s+dev(\s|$)') -or
               ($viteInvoked -and -not $viteNotServer)
 
 if (-not ($isBackend -or $isFrontend)) { exit 0 }
@@ -73,7 +86,7 @@ $overrides = @(
     '--server\.port'
 )
 foreach ($pattern in $overrides) {
-    if ($command -match $pattern) {
+    if ($scanned -match $pattern) {
         Deny @"
 [ブロック] $name を規定以外のポートで起動しようとしています。
 
