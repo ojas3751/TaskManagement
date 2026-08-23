@@ -32,7 +32,7 @@ Web 開発の学習を副次目的としており、**要件定義から順に�
 | | Vite | **8.2.1** |
 | | Tailwind CSS | 4.3.3 |
 | | oxlint | 1.78.0 |
-| **実行環境** | Node.js (LTS) ／ Docker Engine | 22.14.0 ／ 29.7.2 |
+| **実行環境** | Node.js (LTS) ／ npm ／ Docker Engine | 22.14.0 ／ 10.9.2 ／ 29.7.2 |
 
 推移的に決まるものも含めた全一覧は [要件定義書](docs/requirements.md) の「実際のバージョン」にある。**版の正本は各ビルドファイル**（`backend/build.gradle.kts` / `frontend/package.json` / `compose.yaml`）であり、文書と食い違ったらビルドファイルが正しい。
 
