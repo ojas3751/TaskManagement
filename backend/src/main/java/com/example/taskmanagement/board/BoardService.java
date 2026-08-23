@@ -1,15 +1,29 @@
 package com.example.taskmanagement.board;
 
+import jakarta.persistence.EntityManager;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class BoardService {
 
-    private final BoardRepository boardRepository;
+    /** 1 つのリストに置けるタスクの上限（docs/design/api.md 2.3）。 */
+    private static final int MAX_CARDS_PER_LIST = 200;
 
-    public BoardService(BoardRepository boardRepository) {
+    private final BoardRepository boardRepository;
+    private final TaskListRepository taskListRepository;
+    private final CardRepository cardRepository;
+    private final EntityManager entityManager;
+
+    public BoardService(BoardRepository boardRepository,
+                        TaskListRepository taskListRepository,
+                        CardRepository cardRepository,
+                        EntityManager entityManager) {
         this.boardRepository = boardRepository;
+        this.taskListRepository = taskListRepository;
+        this.cardRepository = cardRepository;
+        this.entityManager = entityManager;
     }
 
     /**
@@ -26,5 +40,48 @@ public class BoardService {
         return boardRepository.findBoardWithListsAndCards()
                 .map(BoardResponse::from)
                 .orElseThrow(BoardNotFoundException::new);
+    }
+
+    /**
+     * タスクをリストの先頭に追加する（F-06）。仕様は docs/design/api.md 3.6。
+     *
+     * <p>既存タスクの position を一括で +1 してから、新規に 0 を振る。この 2 つは
+     * 同じトランザクションに入れる。途中で失敗して「+1 だけされた」状態が残ると、
+     * 連番に穴が空いたまま誰も直せなくなるため。
+     *
+     * <p>ID はリクエストで渡されたものをそのまま使う。画面側はサーバーの応答を待たずに
+     * 採番した ID でカードを描いており、ここで振り直すと画面と DB の ID が食い違う。
+     *
+     * @throws ListNotFoundException     追加先のリストが存在しないとき
+     * @throws CardLimitExceededException そのリストが既に上限に達しているとき
+     */
+    @Transactional
+    public BoardResponse.CardResponse createCard(CreateCardRequest request) {
+        UUID listId = request.listId();
+
+        if (!taskListRepository.existsById(listId)) {
+            throw new ListNotFoundException();
+        }
+        if (cardRepository.countByListId(listId) >= MAX_CARDS_PER_LIST) {
+            throw new CardLimitExceededException();
+        }
+
+        cardRepository.shiftPositionsDown(listId);
+
+        // getReference はプロキシを返すだけで SELECT を発行しない。ここで必要なのは
+        // cards.list_id に書く値だけで、リストの中身は使わない。findById で実体を取ると、
+        // shiftPositionsDown の clearAutomatically が永続化コンテキストを空にする都合上、
+        // persist の直前にもう一度 lists を読みに行くことになる。存在確認は上の
+        // existsById が済ませているので、プロキシで足りる。
+        TaskList list = entityManager.getReference(TaskList.class, listId);
+
+        Card card = new Card(request.id(), list, request.title(), "", null, false, 0);
+
+        // save() ではなく persist() を使う。ID をアプリ側で採番している以上、save() からは
+        // 「ID を持つ = 既存の行かもしれない」と見えて merge に倒れ、INSERT の前に不要な
+        // SELECT が 1 回走る。新規追加であることはここでは確定しているので、明示的に INSERT する。
+        entityManager.persist(card);
+
+        return BoardResponse.CardResponse.from(card);
     }
 }

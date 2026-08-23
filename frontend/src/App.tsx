@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BoardApiError, fetchBoard } from './api/board'
-import type { Board } from './api/types'
+import { BoardApiError, createCard, fetchBoard } from './api/board'
+import type { Board, Card } from './api/types'
 import { BoardView } from './components/BoardView'
 import { LoadError } from './components/LoadError'
 
@@ -27,23 +27,43 @@ const SERVER_DOWN: LoadState = {
  */
 const UNREACHABLE_STATUS = [502, 503, 504]
 
+function isUnreachable(cause: unknown): boolean {
+  return !(cause instanceof BoardApiError) || UNREACHABLE_STATUS.includes(cause.status)
+}
+
 function toErrorState(cause: unknown): LoadState {
-  if (cause instanceof BoardApiError) {
-    if (UNREACHABLE_STATUS.includes(cause.status)) return SERVER_DOWN
-    return {
-      status: 'error',
-      title: cause.message,
-      detail: '時間をおいて再読み込みしてください。',
-    }
+  if (isUnreachable(cause)) return SERVER_DOWN
+  return {
+    status: 'error',
+    title: (cause as BoardApiError).message,
+    detail: '時間をおいて再読み込みしてください。',
   }
-  return SERVER_DOWN
+}
+
+/** 操作の失敗を伝える文言。読み込みの失敗と違い、盤面は残したまま上部に出す */
+function toActionMessage(cause: unknown): string {
+  if (isUnreachable(cause)) return 'サーバーに接続できませんでした。'
+  return (cause as BoardApiError).message
+}
+
+/** 1つのリストの cards を差し替えた新しい board を返す（元の board は変更しない） */
+function withCards(board: Board, listId: string, cards: Card[]): Board {
+  return {
+    ...board,
+    lists: board.lists.map((list) => (list.id === listId ? { ...list, cards } : list)),
+  }
 }
 
 export default function App() {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
+  // 追加などの操作が失敗したときのメッセージ。LoadState とは別に持つ。
+  // 一緒にしてしまうと、追加に失敗しただけで画面全体が LoadError に
+  // 置き換わり、まだ読めていたはずの盤面まで消える
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
+    setActionError(null)
     fetchBoard().then(
       (board) => setState({ status: 'ready', board }),
       (cause: unknown) => setState(toErrorState(cause)),
@@ -51,6 +71,56 @@ export default function App() {
   }, [])
 
   useEffect(load, [load])
+
+  /**
+   * タスクを追加する（F-06）。
+   *
+   * サーバーの応答を待たずに先に画面へ反映する。ID をクライアントで採番して
+   * いるのはこのため。失敗したら追加前の状態へ戻す。
+   *
+   * 既存 ID との重複確認はしない。UUID v4 の衝突確率は無視できる上に、
+   * 自分の画面に無いデータとは比較できないので確認としても成立しない。
+   * 最終的な担保は cards テーブルの主キー制約。
+   */
+  const handleAddCard = useCallback((listId: string, title: string) => {
+    const id = crypto.randomUUID()
+    setActionError(null)
+
+    setState((prev) => {
+      if (prev.status !== 'ready') return prev
+
+      const list = prev.board.lists.find((l) => l.id === listId)
+      if (!list) return prev
+
+      // サーバー側と同じ採番をする（既存を +1 して新規に 0）。
+      // ここで違う並びを作ると、追加直後と再読み込み後で順序が変わってしまう
+      const newCard: Card = {
+        id,
+        title,
+        description: '',
+        due_at: null,
+        has_due_time: false,
+        position: 0,
+      }
+      const cards = [newCard, ...list.cards.map((c) => ({ ...c, position: c.position + 1 }))]
+
+      return { status: 'ready', board: withCards(prev.board, listId, cards) }
+    })
+
+    createCard({ id, list_id: listId, title }).catch((cause: unknown) => {
+      setActionError(toActionMessage(cause))
+      // 追加した分を取り除いて元に戻す。position も戻す
+      setState((prev) => {
+        if (prev.status !== 'ready') return prev
+        const list = prev.board.lists.find((l) => l.id === listId)
+        if (!list) return prev
+        const cards = list.cards
+          .filter((c) => c.id !== id)
+          .map((c) => ({ ...c, position: c.position - 1 }))
+        return { status: 'ready', board: withCards(prev.board, listId, cards) }
+      })
+    })
+  }, [])
 
   return (
     <>
@@ -60,13 +130,30 @@ export default function App() {
         </h1>
       </header>
 
+      {actionError && (
+        <div
+          role="alert"
+          className="mx-5 mt-4 flex items-start justify-between gap-3 rounded-card border border-danger bg-surface px-3 py-2"
+        >
+          <p className="m-0 text-danger">{actionError}</p>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            aria-label="閉じる"
+            className="cursor-pointer border-0 bg-transparent px-1 leading-none text-ink-sub hover:text-ink"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {state.status === 'loading' && (
         <p className="px-5 py-10 text-center text-ink-sub">読み込み中…</p>
       )}
       {state.status === 'error' && (
         <LoadError title={state.title} detail={state.detail} onRetry={load} />
       )}
-      {state.status === 'ready' && <BoardView board={state.board} />}
+      {state.status === 'ready' && <BoardView board={state.board} onAddCard={handleAddCard} />}
     </>
   )
 }
