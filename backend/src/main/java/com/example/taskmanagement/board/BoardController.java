@@ -31,15 +31,16 @@ public class BoardController {
     /**
      * タスクの追加（F-06）。仕様は docs/design/api.md 3.6。
      *
-     * <p>返すのは追加された 1 件だけ。ボード全体を返さないのは、画面側が既に同じ内容を
-     * 描き終えており、全体を受け取っても捨てるだけになるため。
+     * <p>返すのは処理後のボード全体（api.md 2.7）。画面側は応答を待たずに描いたうえで、
+     * 返ってきた全体で置き換える。先に描くのは待たせないため、置き換えるのは position の
+     * 正解をサーバーだけが持つようにするためで、この 2 つは両立する。
      *
      * <p>{@code @Valid} を付けないと CreateCardRequest の制約が動かない。違反は
      * MethodArgumentNotValidException として GlobalExceptionHandler に渡る。
      */
     @PostMapping("/api/cards")
     @ResponseStatus(HttpStatus.CREATED)
-    public BoardResponse.CardResponse createCard(@Valid @RequestBody CreateCardRequest request) {
+    public BoardResponse createCard(@Valid @RequestBody CreateCardRequest request) {
         return boardService.createCard(request);
     }
 }

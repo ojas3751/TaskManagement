@@ -1,4 +1,4 @@
-import type { ApiError, Board, Card } from './types'
+import type { ApiError, Board } from './types'
 
 /**
  * サーバー側が返したエラー。
@@ -61,12 +61,15 @@ export async function fetchBoard(): Promise<Board> {
  *
  * 説明文と期限は送らない。追加直後は空文字・期限なしで、編集は詳細モーダル
  * （Step 4 以降）が担当する。
+ *
+ * 返るのは追加された1件ではなくボード全体（api.md 2.7）。position の再採番で
+ * 変わるのは追加したカードだけではないため、呼び出し側はこれで丸ごと置き換える。
  */
 export async function createCard(input: {
   id: string
   list_id: string
   title: string
-}): Promise<Card> {
+}): Promise<Board> {
   const res = await fetch('/api/cards', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -75,5 +78,5 @@ export async function createCard(input: {
 
   if (!res.ok) throw await toApiError(res, 'タスクを追加できませんでした')
 
-  return (await res.json()) as Card
+  return (await res.json()) as Board
 }

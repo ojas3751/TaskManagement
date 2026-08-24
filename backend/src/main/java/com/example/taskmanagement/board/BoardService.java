@@ -37,6 +37,19 @@ public class BoardService {
      */
     @Transactional(readOnly = true)
     public BoardResponse getBoard() {
+        return loadBoard();
+    }
+
+    /**
+     * ボード全体を読み直して返す。
+     *
+     * <p>更新系はいずれも処理後のボード全体を返すため（docs/design/api.md 2.7）、
+     * その組み立てをここに集約する。
+     *
+     * @throws BoardNotFoundException ボードが 1 件も無いとき。seed で必ず存在する前提
+     *         （F-01）なので、これはデータの異常であり素通りさせない
+     */
+    private BoardResponse loadBoard() {
         return boardRepository.findBoardWithListsAndCards()
                 .map(BoardResponse::from)
                 .orElseThrow(BoardNotFoundException::new);
@@ -52,11 +65,14 @@ public class BoardService {
      * <p>ID はリクエストで渡されたものをそのまま使う。画面側はサーバーの応答を待たずに
      * 採番した ID でカードを描いており、ここで振り直すと画面と DB の ID が食い違う。
      *
+     * <p>返すのは処理後のボード全体（api.md 2.7）。画面側は position を自前で計算せず、
+     * これで丸ごと置き換える。採番の知識をサーバーだけが持つようにするため。
+     *
      * @throws ListNotFoundException     追加先のリストが存在しないとき
      * @throws CardLimitExceededException そのリストが既に上限に達しているとき
      */
     @Transactional
-    public BoardResponse.CardResponse createCard(CreateCardRequest request) {
+    public BoardResponse createCard(CreateCardRequest request) {
         UUID listId = request.listId();
 
         if (!taskListRepository.existsById(listId)) {
@@ -82,6 +98,8 @@ public class BoardService {
         // SELECT が 1 回走る。新規追加であることはここでは確定しているので、明示的に INSERT する。
         entityManager.persist(card);
 
-        return BoardResponse.CardResponse.from(card);
+        // loadBoard の SELECT の前に Hibernate が自動で flush するため、いま persist した
+        // カードもこの結果に含まれる
+        return loadBoard();
     }
 }

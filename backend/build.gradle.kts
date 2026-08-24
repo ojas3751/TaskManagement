@@ -28,6 +28,15 @@ dependencies {
 	testImplementation("org.springframework.boot:spring-boot-starter-flyway-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+	// テストは使い捨ての PostgreSQL コンテナに対して走らせる。開発用 DB を使うと、
+	// Step 8 以降そこに入る実データをテストが触ることになるため。
+	// バージョンは compose.yaml と揃える（postgres:17）。
+	// BOM を取り込むのは、Spring Boot 側の依存管理が org.testcontainers のバージョンを
+	// 決めてくれないため。個々の依存に版を書くと、組み合わせがずれても気づけない。
+	testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
+	testImplementation("org.springframework.boot:spring-boot-testcontainers")
+	testImplementation("org.testcontainers:junit-jupiter")
+	testImplementation("org.testcontainers:postgresql")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

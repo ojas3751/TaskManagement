@@ -76,7 +76,12 @@ export default function App() {
    * タスクを追加する（F-06）。
    *
    * サーバーの応答を待たずに先に画面へ反映する。ID をクライアントで採番して
-   * いるのはこのため。失敗したら追加前の状態へ戻す。
+   * いるのはこのため。成功したら返ってきたボード全体で置き換え、失敗したら
+   * 追加前の状態へ戻す。
+   *
+   * 先に描くのは待たせないため、置き換えるのは position の正解をサーバーだけが
+   * 持つようにするためで、この2つは両立する。置き換えの内容は画面が描いたものと
+   * 同じになるはずなので、見た目は変化しない。
    *
    * 既存 ID との重複確認はしない。UUID v4 の衝突確率は無視できる上に、
    * 自分の画面に無いデータとは比較できないので確認としても成立しない。
@@ -92,34 +97,35 @@ export default function App() {
       const list = prev.board.lists.find((l) => l.id === listId)
       if (!list) return prev
 
-      // サーバー側と同じ採番をする（既存を +1 して新規に 0）。
-      // ここで違う並びを作ると、追加直後と再読み込み後で順序が変わってしまう
+      // サーバーの採番は再現しない。この暫定カードが列の先頭に並べば十分なので、
+      // 既存のどれよりも小さい値を置くだけにする。正しい position は応答で入る
       const newCard: Card = {
         id,
         title,
         description: '',
         due_at: null,
         has_due_time: false,
-        position: 0,
+        position: -1,
       }
-      const cards = [newCard, ...list.cards.map((c) => ({ ...c, position: c.position + 1 }))]
 
-      return { status: 'ready', board: withCards(prev.board, listId, cards) }
+      return { status: 'ready', board: withCards(prev.board, listId, [newCard, ...list.cards]) }
     })
 
-    createCard({ id, list_id: listId, title }).catch((cause: unknown) => {
-      setActionError(toActionMessage(cause))
-      // 追加した分を取り除いて元に戻す。position も戻す
-      setState((prev) => {
-        if (prev.status !== 'ready') return prev
-        const list = prev.board.lists.find((l) => l.id === listId)
-        if (!list) return prev
-        const cards = list.cards
-          .filter((c) => c.id !== id)
-          .map((c) => ({ ...c, position: c.position - 1 }))
-        return { status: 'ready', board: withCards(prev.board, listId, cards) }
-      })
-    })
+    createCard({ id, list_id: listId, title }).then(
+      (board) => setState({ status: 'ready', board }),
+      (cause: unknown) => {
+        setActionError(toActionMessage(cause))
+        // 追加した分を取り除いて元に戻す。既存のカードには触っていないので、
+        // 暫定カードを外すだけで追加前の状態に戻る
+        setState((prev) => {
+          if (prev.status !== 'ready') return prev
+          const list = prev.board.lists.find((l) => l.id === listId)
+          if (!list) return prev
+          const cards = list.cards.filter((c) => c.id !== id)
+          return { status: 'ready', board: withCards(prev.board, listId, cards) }
+        })
+      },
+    )
   }, [])
 
   return (
