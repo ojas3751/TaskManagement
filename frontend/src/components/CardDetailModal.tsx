@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Card } from '../api/types'
+import { toDueAtFields, toDueAtIso } from '../lib/dueAt'
 
 const TITLE_MAX = 100
 const DESCRIPTION_MAX = 5000
@@ -27,18 +28,18 @@ function CharCounter({ length, max }: { length: number; max: number }) {
 }
 
 /**
- * タスクの詳細モーダル（画面設計 4章、F-07）。
+ * タスクの詳細モーダル（画面設計 4章、F-07 / F-09）。
  *
- * この段階ではタイトルと説明文を編集できる。**期限の入力欄は Step 5（F-09）、
- * リストの選択欄は Step 8（F-23）で足す。**
- *
- * 期限の2項目は編集できないが、受け取った値をそのまま送り返す。API が部分更新を
- * 採らず「4項目を毎回送る」と決めているため（api.md 3.7）、送らないという選択肢が
- * そもそも無い。
+ * タイトル・説明文・期限を編集できる。**リストの選択欄は Step 8（F-23）で足す。**
  */
 export function CardDetailModal({ card, onSave, onCancel }: Props) {
   const [title, setTitle] = useState(card.title)
   const [description, setDescription] = useState(card.description)
+  const [due, setDue] = useState(() => toDueAtFields(card.due_at, card.has_due_time))
+  // 「時刻を指定する」のチェック。has_due_time に対応する。
+  // 時刻欄が空かどうかで代用しないのは、それだと「未入力」と「0時を指定した」を
+  // 区別できないため（機能仕様書 2.4）
+  const [hasDueTime, setHasDueTime] = useState(card.has_due_time)
   // 空欄の警告は「保存を試みた後」だけ出す。開いた直後から赤字が出ていると、
   // まだ何もしていない利用者を叱っているように見えるため
   const [submitted, setSubmitted] = useState(false)
@@ -74,12 +75,24 @@ export function CardDetailModal({ card, onSave, onCancel }: Props) {
       titleRef.current?.focus()
       return
     }
+    // 時刻の指定が外れていれば時分は送らない。00:00 として保存される
+    const dueAt = toDueAtIso({ date: due.date, time: hasDueTime ? due.time : '' })
+
     onSave({
       title: title.trim(),
       description,
-      due_at: card.due_at,
-      has_due_time: card.has_due_time,
+      due_at: dueAt,
+      // 日付が無いのに時刻の指定だけ残るとサーバーに弾かれる（DUE_TIME_WITHOUT_DUE_DATE）。
+      // 弾かせずにここで整える。利用者にとっては「期限を消した」だけの操作なので、
+      // エラーで知らせるようなことではない
+      has_due_time: dueAt === null ? false : hasDueTime,
     })
+  }
+
+  /** 期限をクリアする（画面設計 4章）。日付・時刻・チェックをまとめて初期状態に戻す */
+  const clearDue = () => {
+    setDue({ date: '', time: '' })
+    setHasDueTime(false)
   }
 
   return (
@@ -152,6 +165,49 @@ export function CardDetailModal({ card, onSave, onCancel }: Props) {
             className="mt-1 w-full resize-y rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
           />
           <CharCounter length={description.length} max={DESCRIPTION_MAX} />
+
+          <fieldset className="mt-3 min-w-0 border-0 p-0">
+            <legend className="p-0">期限</legend>
+
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                aria-label="期限の日付"
+                value={due.date}
+                onChange={(e) => setDue((prev) => ({ ...prev, date: e.target.value }))}
+                className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+              />
+              <input
+                type="time"
+                aria-label="期限の時刻"
+                value={due.time}
+                // 日付が無ければ時刻だけ指定しても意味がないので、そこでも無効にする
+                disabled={!hasDueTime || due.date === ''}
+                onChange={(e) => setDue((prev) => ({ ...prev, time: e.target.value }))}
+                className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none disabled:bg-list-bg disabled:text-ink-sub"
+              />
+            </div>
+
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={clearDue}
+                disabled={due.date === ''}
+                className="cursor-pointer rounded-card border border-line bg-surface px-2.5 py-1 hover:bg-list-bg disabled:cursor-default disabled:text-ink-sub disabled:hover:bg-surface"
+              >
+                期限をクリア
+              </button>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={hasDueTime}
+                  disabled={due.date === ''}
+                  onChange={(e) => setHasDueTime(e.target.checked)}
+                />
+                時刻を指定する
+              </label>
+            </div>
+          </fieldset>
         </div>
 
         <div className="flex justify-end gap-2 border-t border-line px-4 py-3">
