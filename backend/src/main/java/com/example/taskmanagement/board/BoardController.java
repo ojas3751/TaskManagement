@@ -3,6 +3,7 @@ package com.example.taskmanagement.board;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,5 +58,16 @@ public class BoardController {
     public BoardResponse updateCard(@PathVariable UUID id,
                                     @Valid @RequestBody UpdateCardRequest request) {
         return boardService.updateCard(id, request);
+    }
+
+    /**
+     * タスクの削除（F-08）。仕様は docs/design/api.md 3.8。
+     *
+     * <p>204 ではなくボード全体を返す（api.md 2.7）。削除で変わるのは対象のタスクだけでは
+     * なく、同じリストの後続タスクの position も詰まるため。
+     */
+    @DeleteMapping("/api/cards/{id}")
+    public BoardResponse deleteCard(@PathVariable UUID id) {
+        return boardService.deleteCard(id);
     }
 }

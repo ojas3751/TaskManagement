@@ -5,6 +5,7 @@ type Props = {
   board: Board
   onAddCard: (listId: string, title: string) => void
   onOpenCard: (cardId: string) => void
+  onDeleteCard: (cardId: string) => void
 }
 
 /**
@@ -13,13 +14,19 @@ type Props = {
  * 列が増えると横幅に収まらなくなるので、はみ出した分は横スクロールで見せる。
  * 列を縮めて詰め込むと 1 列あたりのタスクが読めなくなるため。
  */
-export function BoardView({ board, onAddCard, onOpenCard }: Props) {
+export function BoardView({ board, onAddCard, onOpenCard, onDeleteCard }: Props) {
   const lists = [...board.lists].sort((a, b) => a.position - b.position)
 
   return (
     <div className="flex items-start gap-3 overflow-x-auto px-5 pb-8 pt-4">
       {lists.map((list) => (
-        <ListColumn key={list.id} list={list} onAddCard={onAddCard} onOpenCard={onOpenCard} />
+        <ListColumn
+          key={list.id}
+          list={list}
+          onAddCard={onAddCard}
+          onOpenCard={onOpenCard}
+          onDeleteCard={onDeleteCard}
+        />
       ))}
     </div>
   )

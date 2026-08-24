@@ -130,4 +130,36 @@ public class BoardService {
 
         return loadBoard();
     }
+
+    /**
+     * タスクを削除する（F-08）。仕様は docs/design/api.md 3.8。
+     *
+     * <p>削除と、空いた位置を詰める処理を同じトランザクションに入れる。途中で失敗して
+     * 「消えたが詰めていない」状態が残ると、position の連番に穴が空いたまま誰も直せなくなる。
+     *
+     * <p>詰める対象を決めるために、削除する前に所属リストと位置を控えておく。
+     *
+     * @throws CardNotFoundException 対象のタスクが存在しないとき
+     */
+    @Transactional
+    public BoardResponse deleteCard(UUID cardId) {
+        Card card = cardRepository.findById(cardId).orElseThrow(CardNotFoundException::new);
+
+        TaskList list = card.getList();
+        UUID listId = list.getId();
+        int position = card.getPosition();
+
+        // EntityManager.remove を直接呼ばず、リストから外して orphanRemoval に消させる。
+        // 理由は TaskList.removeCard の Javadoc を参照（cascade = ALL が削除を打ち消す）
+        list.removeCard(card);
+
+        // 削除を予約しただけでは、まだ DELETE が飛んでいない。続く一括 UPDATE は
+        // 永続化コンテキストを迂回して DB を直接書き換えるため、先に書き出しておかないと
+        // 「詰めたのに消えていない」状態のボードを読んでしまう
+        cardRepository.flush();
+
+        cardRepository.shiftPositionsUp(listId, position);
+
+        return loadBoard();
+    }
 }

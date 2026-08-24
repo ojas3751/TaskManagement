@@ -76,6 +76,22 @@ public class TaskList {
         this.position = position;
     }
 
+    /**
+     * タスクをこのリストから外す（F-08）。
+     *
+     * <p><strong>削除はこの経路で行う。</strong>{@code EntityManager.remove(card)} を直接
+     * 呼ぶだけでは消えない。cards には {@link CascadeType#ALL} が付いているため、flush の
+     * ときに管理下のこのリストから PERSIST がカスケードされ、**コレクションにまだ残っている
+     * カードは削除の予約を取り消される。** 実際、これに気づくまで DELETE 文が 1 度も
+     * 発行されなかった。
+     *
+     * <p>コレクションから外せば {@code orphanRemoval = true} が DELETE を出す。親から辿れる
+     * 状態と DB の状態が食い違わないので、こちらが本来の経路でもある。
+     */
+    public void removeCard(Card card) {
+        cards.remove(card);
+    }
+
     public UUID getId() {
         return id;
     }

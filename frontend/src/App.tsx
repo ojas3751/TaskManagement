@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BoardApiError, createCard, fetchBoard, updateCard } from './api/board'
+import { BoardApiError, createCard, deleteCard, fetchBoard, updateCard } from './api/board'
 import type { Board, Card } from './api/types'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
+import { ConfirmModal } from './components/ConfirmModal'
 import { LoadError } from './components/LoadError'
 
 type LoadState =
@@ -76,6 +77,9 @@ export default function App() {
   // 詳細モーダルで開いているタスク。カードの実体ではなく id を持つ。実体を持つと、
   // 保存でボードが差し替わったときに古い内容を掴んだままになる
   const [openCardId, setOpenCardId] = useState<string | null>(null)
+  // 削除の確認モーダルで対象にしているタスク。開いているタスクとは別に持つ。
+  // 削除は詳細モーダルではなくカード上のアイコンから始まるため
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null)
   // 追加などの操作が失敗したときのメッセージ。LoadState とは別に持つ。
   // 一緒にしてしまうと、追加に失敗しただけで画面全体が LoadError に
   // 置き換わり、まだ読めていたはずの盤面まで消える
@@ -182,7 +186,48 @@ export default function App() {
     )
   }, [])
 
+  /**
+   * タスクを削除する（F-08）。
+   *
+   * 画面からは取り除くだけで、残ったタスクの position は詰め直さない。並び順は
+   * position の昇順で決まるので、番号に穴が空いていても見た目は変わらない。
+   * 正しい連番は応答で入る。ここで詰めると、サーバーと同じ採番を画面が持つことになる。
+   *
+   * 失敗したときは削除前のボードへ丸ごと戻す。取り除いた1枚を元の位置に挿し直すより、
+   * 手元に残しておいた盤面を使う方が確実。
+   */
+  const handleDeleteCard = useCallback((cardId: string) => {
+    setActionError(null)
+    setDeletingCardId(null)
+
+    let before: Board | undefined
+    setState((prev) => {
+      if (prev.status !== 'ready') return prev
+      before = prev.board
+      return {
+        status: 'ready',
+        board: {
+          ...prev.board,
+          lists: prev.board.lists.map((list) => ({
+            ...list,
+            cards: list.cards.filter((card) => card.id !== cardId),
+          })),
+        },
+      }
+    })
+
+    deleteCard(cardId).then(
+      (board) => setState({ status: 'ready', board }),
+      (cause: unknown) => {
+        setActionError(toActionMessage(cause))
+        if (before) setState({ status: 'ready', board: before })
+      },
+    )
+  }, [])
+
   const openCard = state.status === 'ready' && openCardId ? findCard(state.board, openCardId) : undefined
+  const deletingCard =
+    state.status === 'ready' && deletingCardId ? findCard(state.board, deletingCardId) : undefined
 
   return (
     <>
@@ -216,7 +261,12 @@ export default function App() {
         <LoadError title={state.title} detail={state.detail} onRetry={load} />
       )}
       {state.status === 'ready' && (
-        <BoardView board={state.board} onAddCard={handleAddCard} onOpenCard={setOpenCardId} />
+        <BoardView
+          board={state.board}
+          onAddCard={handleAddCard}
+          onOpenCard={setOpenCardId}
+          onDeleteCard={setDeletingCardId}
+        />
       )}
 
       {openCard && (
@@ -224,6 +274,16 @@ export default function App() {
           card={openCard}
           onSave={(input) => handleSaveCard(openCard.id, input)}
           onCancel={() => setOpenCardId(null)}
+        />
+      )}
+
+      {deletingCard && (
+        <ConfirmModal
+          title="削除の確認"
+          lines={[`タスク「${deletingCard.title}」を削除します。`, 'この操作は取り消せません。']}
+          confirmLabel="削除する"
+          onConfirm={() => handleDeleteCard(deletingCard.id)}
+          onCancel={() => setDeletingCardId(null)}
         />
       )}
     </>
