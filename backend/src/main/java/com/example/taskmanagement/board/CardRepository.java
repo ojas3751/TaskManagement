@@ -31,4 +31,19 @@ public interface CardRepository extends JpaRepository<Card, UUID> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Card c set c.position = c.position + 1 where c.list.id = :listId")
     void shiftPositionsDown(@Param("listId") UUID listId);
+
+    /**
+     * 削除された位置より後ろのタスクの position を 1 つ前へ詰める。
+     *
+     * <p>削除（F-08）で空いた番号を残さないため（docs/design/api.md 3.8）。position は
+     * 0 始まりの連番であることを前提に扱っているので、穴が空いたままだと以降の採番が狂う。
+     *
+     * <p>一括 UPDATE の注意点は {@link #shiftPositionsDown} と同じ。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update Card c set c.position = c.position - 1
+            where c.list.id = :listId and c.position > :position
+            """)
+    void shiftPositionsUp(@Param("listId") UUID listId, @Param("position") int position);
 }

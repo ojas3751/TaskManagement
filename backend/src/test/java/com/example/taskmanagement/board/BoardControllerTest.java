@@ -1,5 +1,6 @@
 package com.example.taskmanagement.board;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -14,7 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
 
 /**
- * タスクの API の振る舞い（docs/design/api.md 2.7, 3.6, 3.7）。
+ * タスクの API の振る舞い（docs/design/api.md 2.7, 3.6, 3.7, 3.8）。
  *
  * <p>seed（V2）はリストを 3 つ作るがカードは 1 件も作らないので、各テストは空のリストから
  * 始まる前提で書ける。テストごとの巻き戻しは {@link IntegrationTest} が受け持つ。
@@ -158,6 +159,35 @@ class BoardControllerTest {
                         {"title": "どこにもないタスク", "description": "",
                          "due_at": null, "has_due_time": false}
                         """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
+    }
+
+    @Test
+    void 削除すると残ったタスクのpositionが詰まる() throws Exception {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID third = UUID.randomUUID();
+        // 先頭に積まれるので、並びは 3枚目・2枚目・1枚目 になる
+        mockMvc.perform(postCard(first, "1枚目")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(second, "2枚目")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(third, "3枚目")).andExpect(status().isCreated());
+
+        // 真ん中（position = 1 の「2枚目」）を消す。末尾を消すだけでは、
+        // 後続を詰める処理が動かないので確認にならない
+        mockMvc.perform(delete("/api/cards/{id}", second))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[0].cards.length()").value(2))
+                .andExpect(jsonPath("$.lists[0].cards[0].title").value("3枚目"))
+                .andExpect(jsonPath("$.lists[0].cards[0].position").value(0))
+                // 穴が空いたままなら position は 2 のまま
+                .andExpect(jsonPath("$.lists[0].cards[1].title").value("1枚目"))
+                .andExpect(jsonPath("$.lists[0].cards[1].position").value(1));
+    }
+
+    @Test
+    void 存在しないタスクの削除は404を返す() throws Exception {
+        mockMvc.perform(delete("/api/cards/{id}", UUID.randomUUID()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
     }

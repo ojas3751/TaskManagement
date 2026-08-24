@@ -103,3 +103,17 @@ export async function updateCard(
 
   return (await res.json()) as Board
 }
+
+/**
+ * タスクを削除する（F-08）。仕様は docs/design/api.md 3.8。
+ *
+ * 204 ではなくボード全体が返る。削除で変わるのは対象のタスクだけではなく、
+ * 同じリストの後続タスクの position も詰まるため。
+ */
+export async function deleteCard(id: string): Promise<Board> {
+  const res = await fetch(`/api/cards/${id}`, { method: 'DELETE' })
+
+  if (!res.ok) throw await toApiError(res, 'タスクを削除できませんでした')
+
+  return (await res.json()) as Board
+}
