@@ -1,8 +1,11 @@
 package com.example.taskmanagement.board;
 
 import jakarta.validation.Valid;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -42,5 +45,17 @@ public class BoardController {
     @ResponseStatus(HttpStatus.CREATED)
     public BoardResponse createCard(@Valid @RequestBody CreateCardRequest request) {
         return boardService.createCard(request);
+    }
+
+    /**
+     * タスクの編集（F-07, F-09）。仕様は docs/design/api.md 3.7。
+     *
+     * <p>PUT ではなく PATCH なのは、タスクの全項目を置き換えるわけではないため。list_id と
+     * position はこのエンドポイントでは変えられず、移動は PATCH /api/cards/move が担う。
+     */
+    @PatchMapping("/api/cards/{id}")
+    public BoardResponse updateCard(@PathVariable UUID id,
+                                    @Valid @RequestBody UpdateCardRequest request) {
+        return boardService.updateCard(id, request);
     }
 }

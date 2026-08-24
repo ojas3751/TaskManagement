@@ -70,6 +70,23 @@ public class Card {
         this.position = position;
     }
 
+    /**
+     * 詳細モーダルで編集できる 4 項目をまとめて差し替える（F-07）。
+     *
+     * <p>setter を 4 つ並べず 1 つのメソッドにしているのは、API が部分更新を採らず
+     * 「4 項目を毎回送る」と決めているため（docs/design/api.md 3.7）。個別に置ける形に
+     * すると、呼び出し側が一部だけ更新でき、API の約束と食い違う使い方が生まれる。
+     *
+     * <p>list_id と position はここでは変えられない。移動は別の責務（api.md 3.9）。
+     */
+    public void updateDetails(String title, String description,
+                              OffsetDateTime dueAt, boolean hasDueTime) {
+        this.title = title;
+        this.description = description;
+        this.dueAt = dueAt;
+        this.hasDueTime = hasDueTime;
+    }
+
     public UUID getId() {
         return id;
     }

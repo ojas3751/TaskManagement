@@ -80,3 +80,26 @@ export async function createCard(input: {
 
   return (await res.json()) as Board
 }
+
+/**
+ * タスクのタイトル・説明文・期限を更新する（F-07）。仕様は docs/design/api.md 3.7。
+ *
+ * 4項目すべてを毎回送る。部分更新にしないのは、詳細モーダルが4項目をまとめて
+ * 保存するため。編集していない項目も、いま画面が持っている値をそのまま送る。
+ *
+ * リストの変更（移動）はここではできない。Step 8 の PATCH /api/cards/move が担う。
+ */
+export async function updateCard(
+  id: string,
+  input: { title: string; description: string; due_at: string | null; has_due_time: boolean },
+): Promise<Board> {
+  const res = await fetch(`/api/cards/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+
+  if (!res.ok) throw await toApiError(res, 'タスクを保存できませんでした')
+
+  return (await res.json()) as Board
+}
