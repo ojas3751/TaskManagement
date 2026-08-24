@@ -6,6 +6,7 @@ import { TaskCard } from './TaskCard'
 type Props = {
   list: TaskList
   onAddCard: (listId: string, title: string) => void
+  onOpenCard: (cardId: string) => void
 }
 
 /**
@@ -15,7 +16,7 @@ type Props = {
  * 列の並び替え・改名・削除（Step 9）、完了列のチェックボックスと
  * 折りたたみ（Step 10）はまだ置かない。
  */
-export function ListColumn({ list, onAddCard }: Props) {
+export function ListColumn({ list, onAddCard, onOpenCard }: Props) {
   // 開閉は列ごとに独立していて他と共有する必要がないので、ここで持つ
   const [isAdding, setIsAdding] = useState(false)
 
@@ -42,7 +43,7 @@ export function ListColumn({ list, onAddCard }: Props) {
       ) : (
         <div className="flex flex-col gap-2">
           {cards.map((card) => (
-            <TaskCard key={card.id} card={card} />
+            <TaskCard key={card.id} card={card} onOpen={onOpenCard} />
           ))}
         </div>
       )}

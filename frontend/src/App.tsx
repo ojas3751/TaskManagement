@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BoardApiError, createCard, fetchBoard } from './api/board'
+import { BoardApiError, createCard, fetchBoard, updateCard } from './api/board'
 import type { Board, Card } from './api/types'
 import { BoardView } from './components/BoardView'
+import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
 import { LoadError } from './components/LoadError'
 
 type LoadState =
@@ -54,8 +55,27 @@ function withCards(board: Board, listId: string, cards: Card[]): Board {
   }
 }
 
+/** 1枚のタスクの内容を差し替えた新しい board を返す（元の board は変更しない） */
+function withUpdatedCard(board: Board, cardId: string, input: CardDetailInput): Board {
+  return {
+    ...board,
+    lists: board.lists.map((list) => ({
+      ...list,
+      cards: list.cards.map((card) => (card.id === cardId ? { ...card, ...input } : card)),
+    })),
+  }
+}
+
+/** id からタスクを探す。どのリストにあるかは呼び出し側の関心事ではないので、ここで畳む */
+function findCard(board: Board, cardId: string): Card | undefined {
+  return board.lists.flatMap((list) => list.cards).find((card) => card.id === cardId)
+}
+
 export default function App() {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
+  // 詳細モーダルで開いているタスク。カードの実体ではなく id を持つ。実体を持つと、
+  // 保存でボードが差し替わったときに古い内容を掴んだままになる
+  const [openCardId, setOpenCardId] = useState<string | null>(null)
   // 追加などの操作が失敗したときのメッセージ。LoadState とは別に持つ。
   // 一緒にしてしまうと、追加に失敗しただけで画面全体が LoadError に
   // 置き換わり、まだ読めていたはずの盤面まで消える
@@ -128,6 +148,42 @@ export default function App() {
     )
   }, [])
 
+  /**
+   * タスクの内容を保存する（F-07）。
+   *
+   * 追加（F-06）と同じ流れ。先に画面へ反映し、成功したら返ってきたボード全体で
+   * 置き換え、失敗したら編集前の状態へ戻す。
+   *
+   * モーダルは通信の結果を待たずに閉じる。保存を押した時点で利用者の操作は
+   * 終わっており、待たせる理由がない。失敗したときは盤面が戻り、画面上部に
+   * メッセージが出る（E-05）。
+   */
+  const handleSaveCard = useCallback((cardId: string, input: CardDetailInput) => {
+    setActionError(null)
+    setOpenCardId(null)
+
+    let before: Card | undefined
+    setState((prev) => {
+      if (prev.status !== 'ready') return prev
+      before = findCard(prev.board, cardId)
+      if (!before) return prev
+      return { status: 'ready', board: withUpdatedCard(prev.board, cardId, input) }
+    })
+
+    updateCard(cardId, input).then(
+      (board) => setState({ status: 'ready', board }),
+      (cause: unknown) => {
+        setActionError(toActionMessage(cause))
+        setState((prev) => {
+          if (prev.status !== 'ready' || !before) return prev
+          return { status: 'ready', board: withUpdatedCard(prev.board, cardId, before) }
+        })
+      },
+    )
+  }, [])
+
+  const openCard = state.status === 'ready' && openCardId ? findCard(state.board, openCardId) : undefined
+
   return (
     <>
       <header className="border-b border-line bg-surface px-5 py-3">
@@ -159,7 +215,17 @@ export default function App() {
       {state.status === 'error' && (
         <LoadError title={state.title} detail={state.detail} onRetry={load} />
       )}
-      {state.status === 'ready' && <BoardView board={state.board} onAddCard={handleAddCard} />}
+      {state.status === 'ready' && (
+        <BoardView board={state.board} onAddCard={handleAddCard} onOpenCard={setOpenCardId} />
+      )}
+
+      {openCard && (
+        <CardDetailModal
+          card={openCard}
+          onSave={(input) => handleSaveCard(openCard.id, input)}
+          onCancel={() => setOpenCardId(null)}
+        />
+      )}
     </>
   )
 }

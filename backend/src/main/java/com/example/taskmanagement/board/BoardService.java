@@ -102,4 +102,32 @@ public class BoardService {
         // カードもこの結果に含まれる
         return loadBoard();
     }
+
+    /**
+     * タスクのタイトル・説明文・期限を更新する（F-07）。仕様は docs/design/api.md 3.7。
+     *
+     * <p>4 項目すべてを毎回受け取る。部分更新にしないのは、詳細モーダルが 4 項目をまとめて
+     * 保存するため。
+     *
+     * <p>save() を呼んでいないのは、トランザクションの中で取得したエンティティの値を変えれば、
+     * コミット時に JPA が変更を検知して UPDATE を出すため（ダーティチェック）。
+     *
+     * @throws CardNotFoundException            対象のタスクが存在しないとき
+     * @throws DueTimeWithoutDueDateException  日付が無いのに時分だけ指定されたとき
+     */
+    @Transactional
+    public BoardResponse updateCard(UUID cardId, UpdateCardRequest request) {
+        // 日付が無いのに時分だけある状態は表示のしようがないので、値として受け付けない。
+        // 2 項目にまたがる検証なので @Valid ではなくここで見る
+        if (request.dueAt() == null && request.hasDueTime()) {
+            throw new DueTimeWithoutDueDateException();
+        }
+
+        Card card = cardRepository.findById(cardId).orElseThrow(CardNotFoundException::new);
+
+        card.updateDetails(request.title(), request.description(),
+                request.dueAt(), request.hasDueTime());
+
+        return loadBoard();
+    }
 }

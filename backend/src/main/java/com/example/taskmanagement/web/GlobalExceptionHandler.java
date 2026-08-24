@@ -2,6 +2,8 @@ package com.example.taskmanagement.web;
 
 import com.example.taskmanagement.board.BoardNotFoundException;
 import com.example.taskmanagement.board.CardLimitExceededException;
+import com.example.taskmanagement.board.CardNotFoundException;
+import com.example.taskmanagement.board.DueTimeWithoutDueDateException;
 import com.example.taskmanagement.board.ListNotFoundException;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -29,7 +31,9 @@ public class GlobalExceptionHandler {
      */
     private static final Map<String, ApiErrorResponse> VALIDATION_ERRORS = Map.of(
             "title:NotBlank", new ApiErrorResponse("CARD_TITLE_REQUIRED", "入力してください。", "title"),
-            "title:Size", new ApiErrorResponse("CARD_TITLE_TOO_LONG", "タイトルは100文字以内で入力してください。", "title"));
+            "title:Size", new ApiErrorResponse("CARD_TITLE_TOO_LONG", "タイトルは100文字以内で入力してください。", "title"),
+            "description:Size",
+            new ApiErrorResponse("CARD_DESCRIPTION_TOO_LONG", "説明文は5,000文字以内で入力してください。", "description"));
 
     @ExceptionHandler(BoardNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleBoardNotFound(BoardNotFoundException e) {
@@ -41,6 +45,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleListNotFound(ListNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiErrorResponse.of("LIST_NOT_FOUND", "リストが見つかりません。再読み込みしてください"));
+    }
+
+    @ExceptionHandler(CardNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleCardNotFound(CardNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of("CARD_NOT_FOUND", "タスクが見つかりません。再読み込みしてください"));
+    }
+
+    /**
+     * 期限の相関チェック（docs/design/api.md 3.7）。
+     *
+     * <p>他の入力検証と違って {@code @Valid} ではなくサービスが投げる。2 項目にまたがる
+     * 検証であり、上の VALIDATION_ERRORS が使う「入力欄名 + 制約名」という鍵で表せないため。
+     */
+    @ExceptionHandler(DueTimeWithoutDueDateException.class)
+    public ResponseEntity<ApiErrorResponse> handleDueTimeWithoutDueDate(DueTimeWithoutDueDateException e) {
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse("DUE_TIME_WITHOUT_DUE_DATE", "期限の日付を入力してください。", "due_at"));
     }
 
     @ExceptionHandler(CardLimitExceededException.class)
