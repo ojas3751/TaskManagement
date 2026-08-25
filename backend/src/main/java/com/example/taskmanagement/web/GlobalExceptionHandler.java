@@ -6,8 +6,13 @@ import com.example.taskmanagement.board.CardNotFoundException;
 import com.example.taskmanagement.board.DueTimeWithoutDueDateException;
 import com.example.taskmanagement.board.ListNotFoundException;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.transaction.TransactionException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -21,6 +26,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
      * 入力検証の違反を、画面側が分岐に使えるコードへ対応づける表。
@@ -85,6 +92,57 @@ public class GlobalExceptionHandler {
                 .orElseGet(() -> ApiErrorResponse.of("INVALID_REQUEST", "入力内容が正しくありません。"));
 
         return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * DB に到達できない・DB 側で失敗した（docs/design/api.md 2.4）。
+     *
+     * <p>利用者が自分で Docker を起動する前提のため（要件定義書 P-4）、DB だけ落ちている
+     * 状態は日常的に起きる。想定外のエラーに混ぜず、何を起動すればよいかまで伝える。
+     *
+     * <p><strong>TransactionException も併せて捕まえる。</strong>DB が落ちている状態で最初に
+     * 起きるのは、クエリの失敗ではなく<strong>トランザクションを開始できないこと</strong>
+     * （CannotCreateTransactionException）であり、これは DataAccessException を継承していない
+     * 別系統の例外である。DataAccessException だけを見ていると、DB を止めたときにここへ来ず
+     * 「エラーが発生しました」になる。実際に docker compose stop で確認して気づいた。
+     *
+     * <p>接続失敗とクエリの失敗は区別しない。画面側にできることは「DB を確認する」で同じであり、
+     * 原因の切り分けはログを見る作業になるため。
+     */
+    @ExceptionHandler({DataAccessException.class, TransactionException.class})
+    public ResponseEntity<ApiErrorResponse> handleDataAccessFailure(Exception e) {
+        log.error("DB へのアクセスに失敗しました", e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiErrorResponse.of("DB_UNAVAILABLE",
+                        "データベースに接続できません。Docker が起動しているか確認してください"));
+    }
+
+    /**
+     * リクエスト本文を読めなかった（JSON の壊れ、型の不一致など）。
+     *
+     * <p>下の想定外ハンドラに落ちると 500 になるが、原因は送られてきた内容にあるので 400 が正しい。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnreadableRequest(HttpMessageNotReadableException e) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of("INVALID_REQUEST", "入力内容が正しくありません。"));
+    }
+
+    /**
+     * 想定外のエラー（docs/design/api.md 2.4）。
+     *
+     * <p>本文まで共通の形に揃えるために置いている。これが無いと Spring 既定の応答が返り、
+     * 画面側は code を読めず「エラー本体が読めない＝サーバーに届かなかった」と誤って
+     * 判定してしまう。
+     *
+     * <p>詳細は画面に出さずログに残す。利用者に見せても対処に繋がらず、内部構造を
+     * 晒すだけのため。
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception e) {
+        log.error("想定外のエラーが発生しました", e);
+        return ResponseEntity.internalServerError()
+                .body(ApiErrorResponse.of("INTERNAL_ERROR", "エラーが発生しました。"));
     }
 
     private static ApiErrorResponse toApiError(FieldError error) {

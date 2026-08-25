@@ -22,23 +22,32 @@ const SERVER_DOWN: LoadState = {
  * 「サーバーが起動していません」を 404 のときにも出すと、利用者は
  * 起動しているサーバーを起動しようとして詰まる。
  *
- * ただしバックエンドが落ちている場合、開発中は fetch が失敗せず
- * **Vite の proxy が 502 を返す**（本番の同一オリジン構成でも、前段に
- * リバースプロキシがあれば同様）。502/503/504 は「向こう側に届かなかった」
- * ことを意味するので、通信失敗と同じ扱いにする。
+ * バックエンドが落ちている場合、開発中は fetch が失敗せず **Vite の proxy が
+ * 502 を返す**（本番の同一オリジン構成でも、前段にリバースプロキシがあれば同様）。
+ * つまりステータスコードだけでは、バックエンドが答えたのか proxy が答えたのかを
+ * 区別できない。
+ *
+ * **そこで「自前のエラー本体（code）が読めたか」で判定する。** 読めたなら
+ * バックエンドは動いており、答えを返している。読めなければ手前で止まっている。
+ * DB だけ落ちている状態（E-04）も 503 を返すため、コードで区切ると
+ * 「サーバーが起動していません」に吸われてしまう。
  */
-const UNREACHABLE_STATUS = [502, 503, 504]
-
 function isUnreachable(cause: unknown): boolean {
-  return !(cause instanceof BoardApiError) || UNREACHABLE_STATUS.includes(cause.status)
+  return !(cause instanceof BoardApiError) || cause.code === 'UNKNOWN'
 }
 
 function toErrorState(cause: unknown): LoadState {
   if (isUnreachable(cause)) return SERVER_DOWN
+
+  const error = cause as BoardApiError
   return {
     status: 'error',
-    title: (cause as BoardApiError).message,
-    detail: '時間をおいて再読み込みしてください。',
+    title: error.message,
+    // DB が止まっているだけなら、待っても直らない。起動を促す方に寄せる
+    detail:
+      error.code === 'DB_UNAVAILABLE'
+        ? '起動してから再読み込みしてください。'
+        : '時間をおいて再読み込みしてください。',
   }
 }
 
