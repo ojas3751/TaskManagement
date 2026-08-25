@@ -34,7 +34,9 @@ export function ListColumn({ list, onAddCard, onOpenCard, onDeleteCard }: Props)
       <button
         type="button"
         onClick={() => setIsAdding(true)}
-        className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 text-left text-ink-sub hover:bg-surface hover:text-ink"
+        // 点線にしているのは、タスクのカードと並んだときに「これはタスクではない」と
+        // 一目で分かるようにするため。実線だと、中身が空のカードのように見える
+        className="cursor-pointer rounded-card border border-dashed border-ink-sub bg-surface px-2 py-1 text-left text-ink-sub hover:bg-surface hover:text-ink"
       >
         ＋ タスク追加
       </button>
@@ -44,7 +46,15 @@ export function ListColumn({ list, onAddCard, onOpenCard, onDeleteCard }: Props)
       ) : (
         <div className="flex flex-col gap-2">
           {cards.map((card) => (
-            <TaskCard key={card.id} card={card} onOpen={onOpenCard} onDelete={onDeleteCard} />
+            <TaskCard
+              key={card.id}
+              card={card}
+              // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
+              // 改名（F-03, Step 9）できるようになった時点で壊れる
+              isDone={list.is_fixed_last}
+              onOpen={onOpenCard}
+              onDelete={onDeleteCard}
+            />
           ))}
         </div>
       )}
