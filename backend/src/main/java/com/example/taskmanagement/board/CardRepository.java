@@ -1,5 +1,6 @@
 package com.example.taskmanagement.board;
 
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -46,4 +47,21 @@ public interface CardRepository extends JpaRepository<Card, UUID> {
             where c.list.id = :listId and c.position > :position
             """)
     void shiftPositionsUp(@Param("listId") UUID listId, @Param("position") int position);
+
+    /** リスト内のタスクを並び順で取得する。移動元を詰め直すときに、残りの顔ぶれを知るために使う。 */
+    List<Card> findByListIdOrderByPositionAsc(UUID listId);
+
+    /**
+     * タスクの所属リストと位置を置く（F-13, F-23）。
+     *
+     * <p>移動と並び替えを 1 つのメソッドで扱う。同じリスト内の並び替えは「今と同じリストに
+     * 置き直す」ことになるだけで、別の処理にする理由がない。
+     *
+     * <p>コレクションを操作せず JPQL で直接書き換えているのは、TaskList.cards の
+     * {@code orphanRemoval = true} を踏まないため。移動元のコレクションからタスクを外すと、
+     * 「親から切り離された＝削除」と解釈されて消える。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Card c set c.list = :list, c.position = :position where c.id = :id")
+    void placeCard(@Param("id") UUID id, @Param("list") TaskList list, @Param("position") int position);
 }

@@ -23,8 +23,10 @@ import org.springframework.test.web.servlet.RequestBuilder;
 @IntegrationTest
 class BoardControllerTest {
 
-    /** seed が作る TODO 列。V2__seed_default_board.sql の固定 ID。 */
+    /** seed が作る 3 列。V2__seed_default_board.sql の固定 ID。 */
     private static final String TODO_LIST_ID = "00000000-0000-4000-8000-000000000101";
+    private static final String DOING_LIST_ID = "00000000-0000-4000-8000-000000000102";
+    private static final String DONE_LIST_ID = "00000000-0000-4000-8000-000000000103";
 
     @Autowired
     private MockMvc mockMvc;
@@ -192,14 +194,148 @@ class BoardControllerTest {
                 .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
     }
 
+    @Test
+    void 別のリストへ移すと移動先の末尾に付き移動元が詰まる() throws Exception {
+        UUID stay = UUID.randomUUID();
+        UUID moving = UUID.randomUUID();
+        UUID alreadyThere = UUID.randomUUID();
+        mockMvc.perform(postCard(stay, "TODOに残る")).andExpect(status().isCreated());
+        // 先頭に積まれるので、TODO は [moving, stay] の順になる
+        mockMvc.perform(postCard(moving, "移動するタスク")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(alreadyThere, "進行中に元からある", DOING_LIST_ID)).andExpect(status().isCreated());
+
+        mockMvc.perform(moveCard("""
+                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                         "to_card_ids": ["%s", "%s"]}
+                        """.formatted(moving, TODO_LIST_ID, DOING_LIST_ID, alreadyThere, moving)))
+                .andExpect(status().isOk())
+                // 移動元は 1 件になり、position が 0 に詰まる（抜けた分の空番を残さない）
+                .andExpect(jsonPath("$.lists[0].cards.length()").value(1))
+                .andExpect(jsonPath("$.lists[0].cards[0].title").value("TODOに残る"))
+                .andExpect(jsonPath("$.lists[0].cards[0].position").value(0))
+                // 移動先は受け取った並びのとおり。F-23 は末尾に付けた配列を送る
+                .andExpect(jsonPath("$.lists[1].cards.length()").value(2))
+                .andExpect(jsonPath("$.lists[1].cards[0].title").value("進行中に元からある"))
+                .andExpect(jsonPath("$.lists[1].cards[1].title").value("移動するタスク"))
+                .andExpect(jsonPath("$.lists[1].cards[1].position").value(1));
+    }
+
+    @Test
+    void 完了列から他のリストへ差し戻せる() throws Exception {
+        UUID card = UUID.randomUUID();
+        mockMvc.perform(postCard(card, "終わったつもりのタスク", DONE_LIST_ID)).andExpect(status().isCreated());
+
+        // UC-03。完了は移動元にも移動先にもなれる必要がある
+        mockMvc.perform(moveCard("""
+                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                         "to_card_ids": ["%s"]}
+                        """.formatted(card, DONE_LIST_ID, TODO_LIST_ID, card)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[0].cards[0].title").value("終わったつもりのタスク"))
+                .andExpect(jsonPath("$.lists[2].cards.length()").value(0));
+    }
+
+    @Test
+    void 同じリスト内で並び替えられる() throws Exception {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        mockMvc.perform(postCard(first, "1枚目")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(second, "2枚目")).andExpect(status().isCreated());
+
+        // 追加直後は [2枚目, 1枚目]。これを入れ替える（Step 11 のドラッグ&ドロップで使う経路）
+        mockMvc.perform(moveCard("""
+                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                         "to_card_ids": ["%s", "%s"]}
+                        """.formatted(first, TODO_LIST_ID, TODO_LIST_ID, first, second)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[0].cards[0].title").value("1枚目"))
+                .andExpect(jsonPath("$.lists[0].cards[1].title").value("2枚目"));
+    }
+
+    @Test
+    void 並びに知らないタスクが混ざっていたら400を返す() throws Exception {
+        UUID card = UUID.randomUUID();
+        mockMvc.perform(postCard(card, "移動するタスク")).andExpect(status().isCreated());
+
+        // 移動先に存在しない ID が含まれている。画面の情報が古いときに起きる
+        mockMvc.perform(moveCard("""
+                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                         "to_card_ids": ["%s", "%s"]}
+                        """.formatted(card, TODO_LIST_ID, DOING_LIST_ID, card, UUID.randomUUID())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CARD_IDS_MISMATCH"));
+    }
+
+    @Test
+    void 並びに移動するタスクが含まれていなければ400を返す() throws Exception {
+        UUID card = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        mockMvc.perform(postCard(card, "移動するタスク")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(other, "進行中のタスク", DOING_LIST_ID)).andExpect(status().isCreated());
+
+        mockMvc.perform(moveCard("""
+                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                         "to_card_ids": ["%s"]}
+                        """.formatted(card, TODO_LIST_ID, DOING_LIST_ID, other)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CARD_IDS_MISMATCH"));
+    }
+
+    @Test
+    void 移動元のリストが実際の所属と違えば400を返す() throws Exception {
+        UUID card = UUID.randomUUID();
+        mockMvc.perform(postCard(card, "TODOにいるタスク")).andExpect(status().isCreated());
+
+        // 画面は「進行中にいる」と思っているが、実際は TODO にいる
+        mockMvc.perform(moveCard("""
+                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                         "to_card_ids": ["%s"]}
+                        """.formatted(card, DOING_LIST_ID, DONE_LIST_ID, card)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CARD_IDS_MISMATCH"));
+    }
+
+    @Test
+    void 存在しないタスクの移動は404を返す() throws Exception {
+        UUID missing = UUID.randomUUID();
+
+        mockMvc.perform(moveCard("""
+                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                         "to_card_ids": ["%s"]}
+                        """.formatted(missing, TODO_LIST_ID, DOING_LIST_ID, missing)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
+    }
+
+    @Test
+    void 存在しないリストへの移動は404を返す() throws Exception {
+        UUID card = UUID.randomUUID();
+        mockMvc.perform(postCard(card, "移動するタスク")).andExpect(status().isCreated());
+
+        mockMvc.perform(moveCard("""
+                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                         "to_card_ids": ["%s"]}
+                        """.formatted(card, TODO_LIST_ID, UUID.randomUUID(), card)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("LIST_NOT_FOUND"));
+    }
+
+    private static RequestBuilder moveCard(String body) {
+        return patch("/api/cards/move").contentType(MediaType.APPLICATION_JSON).content(body);
+    }
+
     private static RequestBuilder patchCard(UUID id, String body) {
         return patch("/api/cards/{id}", id).contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
     private static RequestBuilder postCard(UUID id, String title) {
+        return postCard(id, title, TODO_LIST_ID);
+    }
+
+    private static RequestBuilder postCard(UUID id, String title, String listId) {
         String body = """
                 {"id": "%s", "list_id": "%s", "title": "%s"}
-                """.formatted(id, TODO_LIST_ID, title);
+                """.formatted(id, listId, title);
 
         return post("/api/cards").contentType(MediaType.APPLICATION_JSON).content(body);
     }

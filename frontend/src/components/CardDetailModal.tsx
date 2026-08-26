@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Card } from '../api/types'
+import type { Card, TaskList } from '../api/types'
 import { toDueAtFields, toDueAtIso } from '../lib/dueAt'
 
 const TITLE_MAX = 100
@@ -10,10 +10,16 @@ export type CardDetailInput = {
   description: string
   due_at: string | null
   has_due_time: boolean
+  /** 移動先のリスト（F-23）。変えなかった場合は今いるリストの id がそのまま入る */
+  list_id: string
 }
 
 type Props = {
   card: Card
+  /** そのタスクが今いるリスト */
+  currentList: TaskList
+  /** 移動先の選択肢。「完了」を含むすべてのリスト（機能仕様書 3.3） */
+  lists: TaskList[]
   onSave: (input: CardDetailInput) => void
   onCancel: () => void
 }
@@ -30,9 +36,11 @@ function CharCounter({ length, max }: { length: number; max: number }) {
 /**
  * タスクの詳細モーダル（画面設計 4章、F-07 / F-09）。
  *
- * タイトル・説明文・期限を編集できる。**リストの選択欄は Step 8（F-23）で足す。**
+ * リスト・タイトル・説明文・期限を編集できる。移動先の位置は選べず、末尾に付く。
+ * 位置まで指定したい場合はドラッグ&ドロップ（F-13, Step 11）を使う。
  */
-export function CardDetailModal({ card, onSave, onCancel }: Props) {
+export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: Props) {
+  const [listId, setListId] = useState(currentList.id)
   const [title, setTitle] = useState(card.title)
   const [description, setDescription] = useState(card.description)
   const [due, setDue] = useState(() => toDueAtFields(card.due_at, card.has_due_time))
@@ -79,6 +87,7 @@ export function CardDetailModal({ card, onSave, onCancel }: Props) {
     const dueAt = toDueAtIso({ date: due.date, time: hasDueTime ? due.time : '' })
 
     onSave({
+      list_id: listId,
       title: title.trim(),
       description,
       due_at: dueAt,
@@ -129,6 +138,25 @@ export function CardDetailModal({ card, onSave, onCancel }: Props) {
 
         {/* 説明文が長いとモーダルが画面からはみ出すので、中身だけスクロールさせる */}
         <div className="overflow-y-auto px-4 py-3">
+          {/* タイトルより上に置く。そのタスクが今どこにあるかは、内容を読む前に
+              把握したい情報だから。あわせて、Tab だけで選択欄 →[保存]へ到達できる
+              並びになり、マウスを使わない移動が自然な順序になる（画面設計 4章） */}
+          <label htmlFor="card-detail-list" className="block">
+            リスト
+          </label>
+          <select
+            id="card-detail-list"
+            value={listId}
+            onChange={(e) => setListId(e.target.value)}
+            className="mt-1 mb-3 block rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+          >
+            {lists.map((list) => (
+              <option key={list.id} value={list.id}>
+                {list.title}
+              </option>
+            ))}
+          </select>
+
           <label htmlFor="card-detail-title" className="block">
             タイトル
           </label>

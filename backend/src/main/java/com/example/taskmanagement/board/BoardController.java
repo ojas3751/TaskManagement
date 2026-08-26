@@ -70,4 +70,16 @@ public class BoardController {
     public BoardResponse deleteCard(@PathVariable UUID id) {
         return boardService.deleteCard(id);
     }
+
+    /**
+     * タスクの移動（F-13, F-23）。仕様は docs/design/api.md 3.9。
+     *
+     * <p>パスに ID を含めず /api/cards/move としているのは、この操作が 1 件のタスクだけでなく
+     * <strong>リスト内の並び全体</strong>を書き換えるため。/api/cards/{id} の形にすると、
+     * 変更対象がその 1 件に閉じているように読める。
+     */
+    @PatchMapping("/api/cards/move")
+    public BoardResponse moveCard(@Valid @RequestBody MoveCardRequest request) {
+        return boardService.moveCard(request);
+    }
 }
