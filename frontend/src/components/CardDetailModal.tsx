@@ -24,10 +24,14 @@ type Props = {
   onCancel: () => void
 }
 
-/** 入力欄の右下に出す文字数カウンタ（E-01）。上限に達したら赤にする */
+/**
+ * 入力欄の右下に出す文字数カウンタ（E-01）。上限に達したら赤にする。
+ *
+ * 余白を自分で持たない。置く側が行として組むので、ここに margin があると二重にかかる。
+ */
 function CharCounter({ length, max }: { length: number; max: number }) {
   return (
-    <p className={`m-0 mt-1 text-right ${length >= max ? 'text-danger' : 'text-ink-sub'}`}>
+    <p className={`m-0 text-right ${length >= max ? 'text-danger' : 'text-ink-sub'}`}>
       {length}/{max}
     </p>
   )
@@ -76,6 +80,8 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
   }, [])
 
   const isEmpty = title.trim() === ''
+  // 日付が無ければ、時刻の指定もクリアも意味を持たない
+  const isDueDisabled = due.date === ''
 
   const submit = () => {
     setSubmitted(true)
@@ -140,24 +146,31 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
         <div className="overflow-y-auto px-4 py-3">
           {/* タイトルより上に置く。そのタスクが今どこにあるかは、内容を読む前に
               把握したい情報だから。あわせて、Tab だけで選択欄 →[保存]へ到達できる
-              並びになり、マウスを使わない移動が自然な順序になる（画面設計 4章） */}
-          <label htmlFor="card-detail-list" className="block">
-            リスト
-          </label>
-          <select
-            id="card-detail-list"
-            value={listId}
-            onChange={(e) => setListId(e.target.value)}
-            className="mt-1 mb-3 block rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
-          >
-            {lists.map((list) => (
-              <option key={list.id} value={list.id}>
-                {list.title}
-              </option>
-            ))}
-          </select>
+              並びになり、マウスを使わない移動が自然な順序になる（画面設計 4章）。
 
-          <label htmlFor="card-detail-title" className="block">
+              項目名の右隣に置いて1行に収める。選択欄は幅を取らないので、縦に積むと
+              空きだけが増える。
+
+              「ステータス」と呼んでいるのはこの欄だけ。利用者向けの正式な呼称は
+              「リスト」（docs/README.md）だが、ここは「どの状態にするか」を選ぶ
+              場面なので、この欄に限ってこう呼ぶ（#38 で決めた） */}
+          <div className="flex items-center gap-3">
+            <label htmlFor="card-detail-list">ステータス</label>
+            <select
+              id="card-detail-list"
+              value={listId}
+              onChange={(e) => setListId(e.target.value)}
+              className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+            >
+              {lists.map((list) => (
+                <option key={list.id} value={list.id}>
+                  {list.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <label htmlFor="card-detail-title" className="mt-3 block">
             タイトル
           </label>
           <input
@@ -172,8 +185,10 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
             onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
             className="mt-1 w-full rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
           />
-          <div className="flex items-start justify-between gap-3">
-            <p className="m-0 mt-1 text-danger" role="alert">
+          {/* エラー文言と文字数カウンタを同じ行に収める。文言が短いので、
+              独立した行を確保すると空きだけが残る */}
+          <div className="mt-1 flex items-baseline justify-between gap-3">
+            <p className="m-0 text-danger" role="alert">
               {submitted && isEmpty ? '入力してください。' : ''}
             </p>
             <CharCounter length={title.length} max={TITLE_MAX} />
@@ -194,9 +209,33 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
           />
           <CharCounter length={description.length} max={DESCRIPTION_MAX} />
 
-          <fieldset className="mt-3 min-w-0 border-0 p-0">
-            <legend className="p-0">期限</legend>
+          {/* fieldset ではなく div にしているのは、legend の中に横並びを組むと
+              ブラウザによって表示が崩れるため。読み上げのためのまとまりは
+              role と aria-labelledby で作る */}
+          <div className="mt-3" role="group" aria-labelledby="card-detail-due-label">
+            {/* チェックボックスを項目名の行に上げる。入力欄の下に置くと、
+                日付・時刻とクリアの間に割り込んで動線が途切れる */}
+            <div className="flex flex-wrap items-center gap-3">
+              <span id="card-detail-due-label">期限</span>
+              {/* 押せないことを、チェックボックスの薄さだけに語らせない。文字色と
+                  カーソルでも示す。四角が薄いだけだと「押せるが未選択」に見える */}
+              <label
+                className={`flex items-center gap-1.5 ${
+                  isDueDisabled ? 'cursor-not-allowed text-ink-sub' : ''
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={hasDueTime}
+                  disabled={isDueDisabled}
+                  onChange={(e) => setHasDueTime(e.target.checked)}
+                  className={isDueDisabled ? 'cursor-not-allowed' : ''}
+                />
+                時刻も指定する
+              </label>
+            </div>
 
+            {/* 年月日 → 時刻 → クリア を一列に並べる。視線の動く順と操作の順を揃える */}
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <input
                 type="date"
@@ -210,32 +249,20 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
                 aria-label="期限の時刻"
                 value={due.time}
                 // 日付が無ければ時刻だけ指定しても意味がないので、そこでも無効にする
-                disabled={!hasDueTime || due.date === ''}
+                disabled={!hasDueTime || isDueDisabled}
                 onChange={(e) => setDue((prev) => ({ ...prev, time: e.target.value }))}
                 className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none disabled:bg-list-bg disabled:text-ink-sub"
               />
-            </div>
-
-            <div className="mt-1 flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={clearDue}
-                disabled={due.date === ''}
-                className="cursor-pointer rounded-card border border-line bg-surface px-2.5 py-1 hover:bg-list-bg disabled:cursor-default disabled:text-ink-sub disabled:hover:bg-surface"
+                disabled={isDueDisabled}
+                className="cursor-pointer rounded-card border border-line bg-surface px-2.5 py-1 hover:bg-list-bg disabled:cursor-not-allowed disabled:text-ink-sub disabled:hover:bg-surface"
               >
                 期限をクリア
               </button>
-              <label className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={hasDueTime}
-                  disabled={due.date === ''}
-                  onChange={(e) => setHasDueTime(e.target.checked)}
-                />
-                時刻を指定する
-              </label>
             </div>
-          </fieldset>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t border-line px-4 py-3">
