@@ -110,6 +110,29 @@ export async function updateCard(
  * 204 ではなくボード全体が返る。削除で変わるのは対象のタスクだけではなく、
  * 同じリストの後続タスクの position も詰まるため。
  */
+/**
+ * タスクを移動する（F-23、Step 11 では F-13 も）。仕様は docs/design/api.md 3.9。
+ *
+ * to_card_ids は移動後の移動先リストの並び順すべて。配列の添字がそのまま position に
+ * なるので、これが並び順そのものになる。移動元の並びは送らない（サーバーが詰め直す）。
+ */
+export async function moveCard(input: {
+  card_id: string
+  from_list_id: string
+  to_list_id: string
+  to_card_ids: string[]
+}): Promise<Board> {
+  const res = await fetch('/api/cards/move', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+
+  if (!res.ok) throw await toApiError(res, 'タスクを移動できませんでした')
+
+  return (await res.json()) as Board
+}
+
 export async function deleteCard(id: string): Promise<Board> {
   const res = await fetch(`/api/cards/${id}`, { method: 'DELETE' })
 

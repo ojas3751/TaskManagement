@@ -1,7 +1,11 @@
 package com.example.taskmanagement.board;
 
 import jakarta.persistence.EntityManager;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -161,5 +165,91 @@ public class BoardService {
         cardRepository.shiftPositionsUp(listId, position);
 
         return loadBoard();
+    }
+
+    /**
+     * タスクを移動する（F-13, F-23）。仕様は docs/design/api.md 3.9。
+     *
+     * <p>移動先の並びは受け取ったとおりに振り直し、移動元は残ったタスクを詰めて振り直す。
+     * 移動元の並びを受け取らないのは、タスクが 1 件抜けるだけで並びの意図は変わらないため。
+     *
+     * <p>すべて同じトランザクションに入れる。移動先だけ書き換わって移動元が詰まっていない
+     * 状態が残ると、position の連番に穴が空いたまま誰も直せなくなる。
+     *
+     * @throws CardNotFoundException      タスクが存在しないとき
+     * @throws ListNotFoundException      移動元または移動先のリストが存在しないとき
+     * @throws CardLimitExceededException 移動先が既に上限に達しているとき
+     * @throws CardIdsMismatchException   送られてきた並びが移動後の顔ぶれと一致しないとき
+     */
+    @Transactional
+    public BoardResponse moveCard(MoveCardRequest request) {
+        Card card = cardRepository.findById(request.cardId()).orElseThrow(CardNotFoundException::new);
+
+        if (!taskListRepository.existsById(request.fromListId())
+                || !taskListRepository.existsById(request.toListId())) {
+            throw new ListNotFoundException();
+        }
+
+        // 画面が思っている移動元と、DB 上の所属が食い違っている。別のタブで動かした後など、
+        // 画面の情報が古い場合に起きる。そのまま進めると誤ったリストを詰め直してしまう
+        if (!card.getList().getId().equals(request.fromListId())) {
+            throw new CardIdsMismatchException();
+        }
+
+        boolean sameList = request.fromListId().equals(request.toListId());
+
+        if (!sameList && cardRepository.countByListId(request.toListId()) >= MAX_CARDS_PER_LIST) {
+            throw new CardLimitExceededException();
+        }
+
+        verifyDestinationOrder(request, sameList);
+
+        // 移動先を、受け取った並びのとおりに振り直す。添字がそのまま position になる
+        TaskList toList = entityManager.getReference(TaskList.class, request.toListId());
+        for (int position = 0; position < request.toCardIds().size(); position++) {
+            cardRepository.placeCard(request.toCardIds().get(position), toList, position);
+        }
+
+        // 移動元は 1 件抜けた分だけ詰める。同じリスト内の並び替えなら上で振り直し済み
+        if (!sameList) {
+            renumber(request.fromListId());
+        }
+
+        return loadBoard();
+    }
+
+    /**
+     * 送られてきた並びが、移動後の移動先リストの顔ぶれと一致するか確かめる。
+     *
+     * <p>受け取った配列をそのまま信じないのは、画面側の思い込みで DB の並びが書き換わって
+     * しまうため。古い画面が知らないタスクは配列に含まれず、そのまま適用すると position を
+     * 振られないタスクが残る。
+     */
+    private void verifyDestinationOrder(MoveCardRequest request, boolean sameList) {
+        Set<UUID> expected = cardRepository.findByListIdOrderByPositionAsc(request.toListId()).stream()
+                .map(Card::getId)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        // 別のリストへ移すときは、移動してくるタスクが顔ぶれに加わる
+        if (!sameList) {
+            expected.add(request.cardId());
+        }
+
+        Set<UUID> given = new HashSet<>(request.toCardIds());
+
+        // 件数も見るのは、同じ ID が 2 回入っていても集合にすると 1 件に潰れてしまうため
+        if (given.size() != request.toCardIds().size() || !given.equals(expected)) {
+            throw new CardIdsMismatchException();
+        }
+    }
+
+    /** リスト内のタスクを、今の並び順のまま 0 から振り直す（空番を残さない）。 */
+    private void renumber(UUID listId) {
+        TaskList list = entityManager.getReference(TaskList.class, listId);
+        List<Card> cards = cardRepository.findByListIdOrderByPositionAsc(listId);
+
+        for (int position = 0; position < cards.size(); position++) {
+            cardRepository.placeCard(cards.get(position).getId(), list, position);
+        }
     }
 }

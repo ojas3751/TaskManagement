@@ -1,6 +1,7 @@
 package com.example.taskmanagement.web;
 
 import com.example.taskmanagement.board.BoardNotFoundException;
+import com.example.taskmanagement.board.CardIdsMismatchException;
 import com.example.taskmanagement.board.CardLimitExceededException;
 import com.example.taskmanagement.board.CardNotFoundException;
 import com.example.taskmanagement.board.DueTimeWithoutDueDateException;
@@ -70,6 +71,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleDueTimeWithoutDueDate(DueTimeWithoutDueDateException e) {
         return ResponseEntity.badRequest()
                 .body(new ApiErrorResponse("DUE_TIME_WITHOUT_DUE_DATE", "期限の日付を入力してください。", "due_at"));
+    }
+
+    /**
+     * 送られてきた並びが移動後の顔ぶれと一致しない（docs/design/api.md 3.9）。
+     *
+     * <p>画面が持っている情報が古いときに起きるため、再読み込みを促す。
+     */
+    @ExceptionHandler(CardIdsMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handleCardIdsMismatch(CardIdsMismatchException e) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of("CARD_IDS_MISMATCH", "表示が最新ではありません。再読み込みしてください"));
     }
 
     @ExceptionHandler(CardLimitExceededException.class)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BoardApiError, createCard, deleteCard, fetchBoard, updateCard } from './api/board'
-import type { Board, Card } from './api/types'
+import { BoardApiError, createCard, deleteCard, fetchBoard, moveCard, updateCard } from './api/board'
+import type { Board, Card, TaskList } from './api/types'
+import { toCardIdsForAppend, withMovedCard } from './lib/moveCard'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
 import { ConfirmModal } from './components/ConfirmModal'
@@ -65,8 +66,11 @@ function withCards(board: Board, listId: string, cards: Card[]): Board {
   }
 }
 
+/** 詳細モーダルで編集できる項目のうち、PATCH /api/cards/{id} が受け取る 4 項目 */
+type CardEditFields = Omit<CardDetailInput, 'list_id'>
+
 /** 1枚のタスクの内容を差し替えた新しい board を返す（元の board は変更しない） */
-function withUpdatedCard(board: Board, cardId: string, input: CardDetailInput): Board {
+function withUpdatedCard(board: Board, cardId: string, input: CardEditFields): Board {
   return {
     ...board,
     lists: board.lists.map((list) => ({
@@ -79,6 +83,16 @@ function withUpdatedCard(board: Board, cardId: string, input: CardDetailInput): 
 /** id からタスクを探す。どのリストにあるかは呼び出し側の関心事ではないので、ここで畳む */
 function findCard(board: Board, cardId: string): Card | undefined {
   return board.lists.flatMap((list) => list.cards).find((card) => card.id === cardId)
+}
+
+/** そのタスクが今いるリストを返す */
+function findListOfCard(board: Board, cardId: string): TaskList | undefined {
+  return board.lists.find((list) => list.cards.some((card) => card.id === cardId))
+}
+
+/** 表示順に並べたリスト。選択欄の並びを盤面の並びと揃えるために使う */
+function sortedLists(board: Board): TaskList[] {
+  return [...board.lists].sort((a, b) => a.position - b.position)
 }
 
 export default function App() {
@@ -162,38 +176,85 @@ export default function App() {
   }, [])
 
   /**
-   * タスクの内容を保存する（F-07）。
+   * タスクの内容を保存し、リストが変わっていれば移動もする（F-07, F-23）。
    *
-   * 追加（F-06）と同じ流れ。先に画面へ反映し、成功したら返ってきたボード全体で
-   * 置き換え、失敗したら編集前の状態へ戻す。
+   * 先に画面へ反映し、成功したら返ってきたボード全体で置き換える。モーダルは通信の
+   * 結果を待たずに閉じる。保存を押した時点で利用者の操作は終わっており、待たせる
+   * 理由がないため。
    *
-   * モーダルは通信の結果を待たずに閉じる。保存を押した時点で利用者の操作は
-   * 終わっており、待たせる理由がない。失敗したときは盤面が戻り、画面上部に
-   * メッセージが出る（E-05）。
+   * **仕様は「保存で編集と移動が同時に確定する」だが、API は2本に分かれている**
+   * （api.md 3.7 と 3.9）。そのため編集だけ成功して移動が失敗する状態が起こりうる。
+   * このとき「操作前に戻す」（E-05）は成立しない。編集は既にコミットされており、
+   * 画面だけ戻すと DB と食い違うため。
+   *
+   * 投げたリクエストの数で分ける。
+   * - 1本だけ投げて失敗 → 何もコミットされていないので、操作前の状態へ戻す
+   * - 1本目が成功して2本目が失敗 → サーバーから取り直す。嘘の状態を見せるより、
+   *   DB の実態に合わせる方が安全
    */
-  const handleSaveCard = useCallback((cardId: string, input: CardDetailInput) => {
-    setActionError(null)
-    setOpenCardId(null)
+  const handleSaveCard = useCallback(
+    (cardId: string, input: CardDetailInput) => {
+      if (state.status !== 'ready') return
 
-    let before: Card | undefined
-    setState((prev) => {
-      if (prev.status !== 'ready') return prev
-      before = findCard(prev.board, cardId)
-      if (!before) return prev
-      return { status: 'ready', board: withUpdatedCard(prev.board, cardId, input) }
-    })
+      const { list_id: toListId, ...fields } = input
 
-    updateCard(cardId, input).then(
-      (board) => setState({ status: 'ready', board }),
-      (cause: unknown) => {
-        setActionError(toActionMessage(cause))
-        setState((prev) => {
-          if (prev.status !== 'ready' || !before) return prev
-          return { status: 'ready', board: withUpdatedCard(prev.board, cardId, before) }
+      // 移動は2つのリストにまたがるので、1枚のカードではなく盤面ごと控える。
+      //
+      // ここで setState に渡す関数の中から値を取り出さないこと。あの関数を実行するのは
+      // React であり、setState を呼んだ直後にはまだ動いていない。以前そう書いたところ、
+      // 「リストが変わったか」の判定が常に false になり、移動が送られなかった
+      const before = state.board
+      const card = findCard(before, cardId)
+      const fromListId = findListOfCard(before, cardId)?.id
+      if (!card || !fromListId) return
+
+      const listChanged = fromListId !== toListId
+
+      setActionError(null)
+      setOpenCardId(null)
+
+      const edited = withUpdatedCard(before, cardId, fields)
+      const editedCard = findCard(edited, cardId)
+      setState({
+        status: 'ready',
+        board: listChanged && editedCard ? withMovedCard(edited, editedCard, toListId) : edited,
+      })
+
+      // 編集の内容が変わっていなくても送る。変わったかどうかを判定して送信を省いても、
+      // 「4項目を毎回送る」という API の約束（api.md 3.7）の方が単純で、
+      // 同じ値で上書きするだけなので害がない
+      let editCommitted = false
+
+      updateCard(cardId, fields)
+        .then((board) => {
+          editCommitted = true
+          if (!listChanged) return board
+
+          return moveCard({
+            card_id: cardId,
+            from_list_id: fromListId,
+            to_list_id: toListId,
+            // 並びは編集後の応答から組み立てる。編集は並び順を変えないが、
+            // いちばん新しい状態から作る方が食い違いの余地が少ない
+            to_card_ids: toCardIdsForAppend(board, cardId, toListId),
+          })
         })
-      },
-    )
-  }, [])
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+
+            if (editCommitted) {
+              // 編集は通っている。画面を操作前に戻すと DB と食い違うので取り直す
+              load()
+              return
+            }
+            setState({ status: 'ready', board: before })
+          },
+        )
+    },
+    [state, load],
+  )
 
   /**
    * タスクを削除する（F-08）。
@@ -235,6 +296,8 @@ export default function App() {
   }, [])
 
   const openCard = state.status === 'ready' && openCardId ? findCard(state.board, openCardId) : undefined
+  const openCardList =
+    state.status === 'ready' && openCardId ? findListOfCard(state.board, openCardId) : undefined
   const deletingCard =
     state.status === 'ready' && deletingCardId ? findCard(state.board, deletingCardId) : undefined
 
@@ -278,9 +341,11 @@ export default function App() {
         />
       )}
 
-      {openCard && (
+      {openCard && openCardList && state.status === 'ready' && (
         <CardDetailModal
           card={openCard}
+          currentList={openCardList}
+          lists={sortedLists(state.board)}
           onSave={(input) => handleSaveCard(openCard.id, input)}
           onCancel={() => setOpenCardId(null)}
         />
