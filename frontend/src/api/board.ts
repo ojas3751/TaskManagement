@@ -18,6 +18,29 @@ export class BoardApiError extends Error {
 }
 
 /**
+ * すべてのリクエストの上限。
+ *
+ * 画面は応答待ちの間ずっと操作を止める（App.tsx の pending）。解除はリクエストの
+ * 決着で行うため、**応答が返らないと操作できないままになる。** fetch には既定の
+ * タイムアウトが無いので、ここで上限を置く。
+ *
+ * DB が止まっている場合、バックエンドは HikariCP の connection-timeout（30秒）を
+ * 待ってから 503 を返す。それより十分に長く、かつ画面が固まったままにならない値。
+ */
+const TIMEOUT_MS = 35_000
+
+/**
+ * 上限付きの fetch。
+ *
+ * 超過すると DOMException（TimeoutError）が投げられる。BoardApiError ではないので
+ * App.tsx の isUnreachable が true を返し、「サーバーに接続できませんでした。」として
+ * 扱われる。呼び出し側に追加のハンドリングは要らない。
+ */
+function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
+}
+
+/**
  * 失敗レスポンスを BoardApiError に変換する。
  *
  * エラー本体が読めない場合（HTML のエラーページなど）もあるため、
@@ -46,7 +69,7 @@ async function toApiError(res: Response, fallback: string): Promise<BoardApiErro
  * 本番でも同一オリジンから配信する前提のため、ホストを書く必要がない。
  */
 export async function fetchBoard(): Promise<Board> {
-  const res = await fetch('/api/board')
+  const res = await apiFetch('/api/board')
 
   if (!res.ok) throw await toApiError(res, 'ボードを取得できませんでした')
 
@@ -70,7 +93,7 @@ export async function createCard(input: {
   list_id: string
   title: string
 }): Promise<Board> {
-  const res = await fetch('/api/cards', {
+  const res = await apiFetch('/api/cards', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -93,7 +116,7 @@ export async function updateCard(
   id: string,
   input: { title: string; description: string; due_at: string | null; has_due_time: boolean },
 ): Promise<Board> {
-  const res = await fetch(`/api/cards/${id}`, {
+  const res = await apiFetch(`/api/cards/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -122,7 +145,7 @@ export async function moveCard(input: {
   to_list_id: string
   to_card_ids: string[]
 }): Promise<Board> {
-  const res = await fetch('/api/cards/move', {
+  const res = await apiFetch('/api/cards/move', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -134,7 +157,7 @@ export async function moveCard(input: {
 }
 
 export async function deleteCard(id: string): Promise<Board> {
-  const res = await fetch(`/api/cards/${id}`, { method: 'DELETE' })
+  const res = await apiFetch(`/api/cards/${id}`, { method: 'DELETE' })
 
   if (!res.ok) throw await toApiError(res, 'タスクを削除できませんでした')
 
