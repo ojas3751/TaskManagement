@@ -13,6 +13,21 @@ type LoadState =
   | { status: 'ready'; board: Board }
   | { status: 'error'; title: string; detail: string }
 
+/**
+ * 応答待ちの見せ方（#44）。
+ *
+ * - `idle` … 何も出さない。待っていないか、まだ十分に速い
+ * - `slow` … 遅い。処理中であることだけを伝える
+ * - `checking` … つながっていない見込み。何を確認しているかまで伝える
+ */
+type WaitPhase = 'idle' | 'slow' | 'checking'
+
+/** ここまでは何も出さない。正常時（10ms 前後）に表示がチラつかない値 */
+const SLOW_AFTER_MS = 200
+
+/** ここまで待たされたら「遅い」ではなく「つながっていない」として扱う */
+const CHECKING_AFTER_MS = 2_000
+
 const SERVER_DOWN: LoadState = {
   status: 'error',
   title: 'サーバーが起動していません。',
@@ -86,6 +101,15 @@ export default function App() {
   // 一緒にしてしまうと、追加に失敗しただけで画面全体が LoadError に
   // 置き換わり、まだ読めていたはずの盤面まで消える
   const [actionError, setActionError] = useState<string | null>(null)
+  // 飛んでいるリクエストの数（#43, #44）。0 より大きい間は盤面を触れなくする。
+  //
+  // **これが 0 か 1 しか取らないことに、巻き戻しの正しさが乗っている。** 詳しくは
+  // handleDeleteCard のコメント。数で持っているのは、将来ロックを緩めたときに
+  // 「複数飛びうる」という事実がここに現れるようにするため
+  const [pending, setPending] = useState(0)
+  const isBusy = pending > 0
+  // 応答待ちをどう見せているか。段階の意味は下の useEffect を参照
+  const [waitPhase, setWaitPhase] = useState<WaitPhase>('idle')
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -97,6 +121,32 @@ export default function App() {
   }, [])
 
   useEffect(load, [load])
+
+  /**
+   * 応答待ちの見せ方を2段階に分ける（#44）。
+   *
+   * すぐには何も出さない。正常時の応答は 10ms 前後で、即座に出すと**操作のたびに
+   * 一瞬だけ現れて消える。** チラつきとして見えるだけで、無い方がましになる。
+   * 遅らせておけば、速いときは何も出ず、遅いときだけ出る。
+   *
+   * 2秒まで待たされているなら、それはもう「遅い」ではなく「つながっていない」に
+   * 近い。文言を、何が起きているかを言うものに差し替える。
+   *
+   * 依存は isBusy（真偽値）にする。pending（数）にすると、値が動くたびにタイマーを
+   * 張り直してしまう
+   */
+  useEffect(() => {
+    if (!isBusy) {
+      setWaitPhase('idle')
+      return
+    }
+    const slow = setTimeout(() => setWaitPhase('slow'), SLOW_AFTER_MS)
+    const checking = setTimeout(() => setWaitPhase('checking'), CHECKING_AFTER_MS)
+    return () => {
+      clearTimeout(slow)
+      clearTimeout(checking)
+    }
+  }, [isBusy])
 
   /**
    * タスクを追加する（F-06）。
@@ -113,44 +163,53 @@ export default function App() {
    * 自分の画面に無いデータとは比較できないので確認としても成立しない。
    * 最終的な担保は cards テーブルの主キー制約。
    */
-  const handleAddCard = useCallback((listId: string, title: string) => {
-    const id = crypto.randomUUID()
-    setActionError(null)
+  const handleAddCard = useCallback(
+    (listId: string, title: string) => {
+      // 応答待ちの間は盤面が inert なのでここには来ないが、保険として置く
+      if (isBusy) return
 
-    setState((prev) => {
-      if (prev.status !== 'ready') return prev
+      const id = crypto.randomUUID()
+      setActionError(null)
 
-      const list = prev.board.lists.find((l) => l.id === listId)
-      if (!list) return prev
+      setState((prev) => {
+        if (prev.status !== 'ready') return prev
 
-      // サーバーの採番は再現しない。この暫定カードが列の先頭に並べば十分なので、
-      // 既存のどれよりも小さい値を置くだけにする。正しい position は応答で入る
-      const newCard: Card = {
-        id,
-        title,
-        description: '',
-        due_at: null,
-        has_due_time: false,
-        position: -1,
-      }
+        const list = prev.board.lists.find((l) => l.id === listId)
+        if (!list) return prev
 
-      return { status: 'ready', board: withCards(prev.board, listId, [newCard, ...list.cards]) }
-    })
+        // サーバーの採番は再現しない。この暫定カードが列の先頭に並べば十分なので、
+        // 既存のどれよりも小さい値を置くだけにする。正しい position は応答で入る
+        const newCard: Card = {
+          id,
+          title,
+          description: '',
+          due_at: null,
+          has_due_time: false,
+          position: -1,
+        }
 
-    createCard({ id, list_id: listId, title }).then(
-      (board) => setState({ status: 'ready', board }),
-      (cause: unknown) => {
-        setActionError(toActionMessage(cause))
-        // 追加した分を取り除いて元に戻す。既存のカードには触っていないので、
-        // 暫定カードを外すだけで追加前の状態に戻る
-        setState((prev) =>
-          prev.status === 'ready'
-            ? { status: 'ready', board: withoutCard(prev.board, id) }
-            : prev,
+        return { status: 'ready', board: withCards(prev.board, listId, [newCard, ...list.cards]) }
+      })
+
+      setPending((n) => n + 1)
+      createCard({ id, list_id: listId, title })
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+            // 追加した分を取り除いて元に戻す。既存のカードには触っていないので、
+            // 暫定カードを外すだけで追加前の状態に戻る
+            setState((prev) =>
+              prev.status === 'ready'
+                ? { status: 'ready', board: withoutCard(prev.board, id) }
+                : prev,
+            )
+          },
         )
-      },
-    )
-  }, [])
+        .finally(() => setPending((n) => n - 1))
+    },
+    [isBusy],
+  )
 
   /**
    * タスクの内容を保存し、リストが変わっていれば移動もする（F-07, F-23）。
@@ -171,7 +230,7 @@ export default function App() {
    */
   const handleSaveCard = useCallback(
     (cardId: string, input: CardDetailInput) => {
-      if (state.status !== 'ready') return
+      if (state.status !== 'ready' || isBusy) return
 
       const { list_id: toListId, ...fields } = input
 
@@ -202,6 +261,10 @@ export default function App() {
       // 同じ値で上書きするだけなので害がない
       let editCommitted = false
 
+      // 2本投げるが、数えるのは1回だけ。利用者にとっては「保存」という1つの操作で、
+      // その全体が終わるまで盤面を触らせない
+      setPending((n) => n + 1)
+
       updateCard(cardId, fields)
         .then((board) => {
           editCommitted = true
@@ -229,8 +292,9 @@ export default function App() {
             setState({ status: 'ready', board: before })
           },
         )
+        .finally(() => setPending((n) => n - 1))
     },
-    [state, load],
+    [state, isBusy, load],
   )
 
   /**
@@ -238,16 +302,21 @@ export default function App() {
    *
    * 画面からは取り除くだけで、position は詰め直さない（withoutCard 参照）。
    *
-   * 失敗したときは削除前のボードへ丸ごと戻す。
+   * 失敗したときは削除前のボードへ丸ごと戻す。3つの操作すべてがこの形で、
+   * 「操作前の盤面を控えておいて、失敗したらそれで上書きする」で揃えてある。
    *
-   * **ただしこの形は、操作が重なると壊れる。** 控えているのが盤面「全体」なので、
-   * 待っている間に別の操作が入ると、その分まで巻き戻して上書きしてしまう。
-   * 実際に「削除の途中で編集すると削除が戻らない」不具合が出ている（#43）。
-   * どの形に揃えるかはそちらで決めるため、ここでは読むタイミングだけ直してある。
+   * **この形が正しいのは、応答待ちの間は新しい操作を始められないからである。**
+   * 飛んでいるリクエストが常に1本なら、控えた盤面は「すべての操作より前」と一致する。
+   *
+   * 逆に言えば、**ロックを外すとこの前提が崩れる。** 控えているのが盤面「全体」なので、
+   * 待っている間に別の操作が入ると、その分まで巻き戻して上書きしてしまう。実際に
+   * 「削除の途中で編集すると削除が戻らない」不具合が出ていた（#43）。
+   *
+   * **ロックは見た目のための機能ではない。** 外すなら、先に巻き戻しの形を作り直すこと。
    */
   const handleDeleteCard = useCallback(
     (cardId: string) => {
-      if (state.status !== 'ready') return
+      if (state.status !== 'ready' || isBusy) return
 
       // 巻き戻しに使う盤面は、setState に渡した関数の中からではなく、いまの状態から取る。
       // あの関数を実行するのは React であり、いつ動くかは保証されていない（handleSaveCard 参照）
@@ -258,15 +327,18 @@ export default function App() {
 
       setState({ status: 'ready', board: withoutCard(before, cardId) })
 
-      deleteCard(cardId).then(
-        (board) => setState({ status: 'ready', board }),
-        (cause: unknown) => {
-          setActionError(toActionMessage(cause))
-          setState({ status: 'ready', board: before })
-        },
-      )
+      setPending((n) => n + 1)
+      deleteCard(cardId)
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+            setState({ status: 'ready', board: before })
+          },
+        )
+        .finally(() => setPending((n) => n - 1))
     },
-    [state],
+    [state, isBusy],
   )
 
   const openCard = state.status === 'ready' && openCardId ? findCard(state.board, openCardId) : undefined
@@ -300,6 +372,25 @@ export default function App() {
         </div>
       )}
 
+      {/* エラーの role="alert" と違い status にする。読み上げが操作を遮らない */}
+      {waitPhase !== 'idle' && (
+        <div
+          role="status"
+          className="mx-5 mt-4 flex items-center gap-2 rounded-card border border-line bg-surface px-3 py-2"
+        >
+          <span
+            aria-hidden="true"
+            // 動きを減らす設定の利用者には回さない。文言だけで意味は通る
+            className="size-4 shrink-0 animate-spin rounded-full border-2 border-line border-t-ink motion-reduce:animate-none"
+          />
+          <p className="m-0 text-ink-sub">
+            {waitPhase === 'checking'
+              ? 'データベースの接続をチェック中です…'
+              : '更新しています…'}
+          </p>
+        </div>
+      )}
+
       {state.status === 'loading' && (
         <p className="px-5 py-10 text-center text-ink-sub">読み込み中…</p>
       )}
@@ -307,12 +398,26 @@ export default function App() {
         <LoadError title={state.title} detail={state.detail} onRetry={load} />
       )}
       {state.status === 'ready' && (
-        <BoardView
-          board={state.board}
-          onAddCard={handleAddCard}
-          onOpenCard={setOpenCardId}
-          onDeleteCard={setDeletingCardId}
-        />
+        /**
+         * 応答待ちの間は盤面を触れなくする（#43, #44）。
+         *
+         * ボタンごとに disabled を配らず inert でまとめて外すのは、クリックだけでなく
+         * **キーボードのフォーカスと支援技術からも外れる**ため。変更も1箇所で済む。
+         *
+         * モーダルはここに含めなくてよい。3つの操作はどれもリクエストを投げる前に
+         * モーダルを閉じるので、応答待ちの間にモーダルが開いていることはない。
+         *
+         * 薄くするのは waitPhase が動いてから。ロックと同時に薄くすると、正常時
+         * （10ms 前後）に一瞬だけ暗くなってチラつく
+         */
+        <div inert={isBusy} className={waitPhase === 'idle' ? undefined : 'opacity-60'}>
+          <BoardView
+            board={state.board}
+            onAddCard={handleAddCard}
+            onOpenCard={setOpenCardId}
+            onDeleteCard={setDeletingCardId}
+          />
+        </div>
       )}
 
       {openCard && openCardList && state.status === 'ready' && (
