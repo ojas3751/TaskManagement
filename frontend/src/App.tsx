@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BoardApiError, createCard, deleteCard, fetchBoard, moveCard, updateCard } from './api/board'
 import type { Board, Card, TaskList } from './api/types'
+import { withCards, withUpdatedCard, withoutCard } from './lib/boardEdit'
 import { toCardIdsForAppend, withMovedCard } from './lib/moveCard'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
@@ -56,28 +57,6 @@ function toErrorState(cause: unknown): LoadState {
 function toActionMessage(cause: unknown): string {
   if (isUnreachable(cause)) return 'サーバーに接続できませんでした。'
   return (cause as BoardApiError).message
-}
-
-/** 1つのリストの cards を差し替えた新しい board を返す（元の board は変更しない） */
-function withCards(board: Board, listId: string, cards: Card[]): Board {
-  return {
-    ...board,
-    lists: board.lists.map((list) => (list.id === listId ? { ...list, cards } : list)),
-  }
-}
-
-/** 詳細モーダルで編集できる項目のうち、PATCH /api/cards/{id} が受け取る 4 項目 */
-type CardEditFields = Omit<CardDetailInput, 'list_id'>
-
-/** 1枚のタスクの内容を差し替えた新しい board を返す（元の board は変更しない） */
-function withUpdatedCard(board: Board, cardId: string, input: CardEditFields): Board {
-  return {
-    ...board,
-    lists: board.lists.map((list) => ({
-      ...list,
-      cards: list.cards.map((card) => (card.id === cardId ? { ...card, ...input } : card)),
-    })),
-  }
 }
 
 /** id からタスクを探す。どのリストにあるかは呼び出し側の関心事ではないので、ここで畳む */
@@ -164,13 +143,11 @@ export default function App() {
         setActionError(toActionMessage(cause))
         // 追加した分を取り除いて元に戻す。既存のカードには触っていないので、
         // 暫定カードを外すだけで追加前の状態に戻る
-        setState((prev) => {
-          if (prev.status !== 'ready') return prev
-          const list = prev.board.lists.find((l) => l.id === listId)
-          if (!list) return prev
-          const cards = list.cards.filter((c) => c.id !== id)
-          return { status: 'ready', board: withCards(prev.board, listId, cards) }
-        })
+        setState((prev) =>
+          prev.status === 'ready'
+            ? { status: 'ready', board: withoutCard(prev.board, id) }
+            : prev,
+        )
       },
     )
   }, [])
@@ -259,41 +236,38 @@ export default function App() {
   /**
    * タスクを削除する（F-08）。
    *
-   * 画面からは取り除くだけで、残ったタスクの position は詰め直さない。並び順は
-   * position の昇順で決まるので、番号に穴が空いていても見た目は変わらない。
-   * 正しい連番は応答で入る。ここで詰めると、サーバーと同じ採番を画面が持つことになる。
+   * 画面からは取り除くだけで、position は詰め直さない（withoutCard 参照）。
    *
-   * 失敗したときは削除前のボードへ丸ごと戻す。取り除いた1枚を元の位置に挿し直すより、
-   * 手元に残しておいた盤面を使う方が確実。
+   * 失敗したときは削除前のボードへ丸ごと戻す。
+   *
+   * **ただしこの形は、操作が重なると壊れる。** 控えているのが盤面「全体」なので、
+   * 待っている間に別の操作が入ると、その分まで巻き戻して上書きしてしまう。
+   * 実際に「削除の途中で編集すると削除が戻らない」不具合が出ている（#43）。
+   * どの形に揃えるかはそちらで決めるため、ここでは読むタイミングだけ直してある。
    */
-  const handleDeleteCard = useCallback((cardId: string) => {
-    setActionError(null)
-    setDeletingCardId(null)
+  const handleDeleteCard = useCallback(
+    (cardId: string) => {
+      if (state.status !== 'ready') return
 
-    let before: Board | undefined
-    setState((prev) => {
-      if (prev.status !== 'ready') return prev
-      before = prev.board
-      return {
-        status: 'ready',
-        board: {
-          ...prev.board,
-          lists: prev.board.lists.map((list) => ({
-            ...list,
-            cards: list.cards.filter((card) => card.id !== cardId),
-          })),
+      // 巻き戻しに使う盤面は、setState に渡した関数の中からではなく、いまの状態から取る。
+      // あの関数を実行するのは React であり、いつ動くかは保証されていない（handleSaveCard 参照）
+      const before = state.board
+
+      setActionError(null)
+      setDeletingCardId(null)
+
+      setState({ status: 'ready', board: withoutCard(before, cardId) })
+
+      deleteCard(cardId).then(
+        (board) => setState({ status: 'ready', board }),
+        (cause: unknown) => {
+          setActionError(toActionMessage(cause))
+          setState({ status: 'ready', board: before })
         },
-      }
-    })
-
-    deleteCard(cardId).then(
-      (board) => setState({ status: 'ready', board }),
-      (cause: unknown) => {
-        setActionError(toActionMessage(cause))
-        if (before) setState({ status: 'ready', board: before })
-      },
-    )
-  }, [])
+      )
+    },
+    [state],
+  )
 
   const openCard = state.status === 'ready' && openCardId ? findCard(state.board, openCardId) : undefined
   const openCardList =
