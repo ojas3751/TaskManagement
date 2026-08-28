@@ -5,6 +5,7 @@ import com.example.taskmanagement.board.CardIdsMismatchException;
 import com.example.taskmanagement.board.CardLimitExceededException;
 import com.example.taskmanagement.board.CardNotFoundException;
 import com.example.taskmanagement.board.DueTimeWithoutDueDateException;
+import com.example.taskmanagement.board.ListLimitExceededException;
 import com.example.taskmanagement.board.ListNotFoundException;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -31,17 +32,36 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
+     * リクエストの種類を、エラーコードが指す対象へ対応づける表。
+     *
+     * <p>キーは Spring がリクエスト本文に付ける名前（クラス名の先頭を小文字にしたもの）。
+     *
+     * <p><strong>入力欄の名前だけでは対象を決められない。</strong>タスク名もリスト名も
+     * {@code title} という同じ欄名で届くため、欄名だけを鍵にすると、リスト名が空のときにも
+     * {@code CARD_TITLE_REQUIRED} と「100文字以内で入力してください」が返ってしまう。
+     * どのリクエストの検証かをここで一段挟んで区別する。
+     */
+    private static final Map<String, String> VALIDATION_TARGETS = Map.of(
+            "createCardRequest", "CARD",
+            "updateCardRequest", "CARD",
+            "createListRequest", "LIST");
+
+    /**
      * 入力検証の違反を、画面側が分岐に使えるコードへ対応づける表。
      *
-     * <p>キーは「入力欄の名前 + 違反した制約の名前」。Bean Validation の既定メッセージを
+     * <p>キーは「対象 + 入力欄の名前 + 違反した制約の名前」。Bean Validation の既定メッセージを
      * そのまま返さないのは、英語であることと、文言が変わると画面側の分岐が壊れるため
      * （docs/design/api.md 2.4）。
      */
     private static final Map<String, ApiErrorResponse> VALIDATION_ERRORS = Map.of(
-            "title:NotBlank", new ApiErrorResponse("CARD_TITLE_REQUIRED", "入力してください。", "title"),
-            "title:Size", new ApiErrorResponse("CARD_TITLE_TOO_LONG", "タイトルは100文字以内で入力してください。", "title"),
-            "description:Size",
-            new ApiErrorResponse("CARD_DESCRIPTION_TOO_LONG", "説明文は5,000文字以内で入力してください。", "description"));
+            "CARD:title:NotBlank", new ApiErrorResponse("CARD_TITLE_REQUIRED", "入力してください。", "title"),
+            "CARD:title:Size",
+            new ApiErrorResponse("CARD_TITLE_TOO_LONG", "タイトルは100文字以内で入力してください。", "title"),
+            "CARD:description:Size",
+            new ApiErrorResponse("CARD_DESCRIPTION_TOO_LONG", "説明文は5,000文字以内で入力してください。", "description"),
+            "LIST:title:NotBlank", new ApiErrorResponse("LIST_TITLE_REQUIRED", "入力してください。", "title"),
+            "LIST:title:Size",
+            new ApiErrorResponse("LIST_TITLE_TOO_LONG", "リスト名は50文字以内で入力してください。", "title"));
 
     @ExceptionHandler(BoardNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleBoardNotFound(BoardNotFoundException e) {
@@ -84,6 +104,12 @@ public class GlobalExceptionHandler {
                 .body(ApiErrorResponse.of("CARD_IDS_MISMATCH", "表示が最新ではありません。再読み込みしてください"));
     }
 
+    @ExceptionHandler(ListLimitExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleListLimitExceeded(ListLimitExceededException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("LIST_LIMIT_EXCEEDED", "追加できるリストは10件までです"));
+    }
+
     @ExceptionHandler(CardLimitExceededException.class)
     public ResponseEntity<ApiErrorResponse> handleCardLimitExceeded(CardLimitExceededException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -98,8 +124,10 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidationFailure(MethodArgumentNotValidException e) {
+        String target = VALIDATION_TARGETS.get(e.getBindingResult().getObjectName());
+
         ApiErrorResponse body = e.getBindingResult().getFieldErrors().stream()
-                .map(GlobalExceptionHandler::toApiError)
+                .map(error -> toApiError(target, error))
                 .findFirst()
                 .orElseGet(() -> ApiErrorResponse.of("INVALID_REQUEST", "入力内容が正しくありません。"));
 
@@ -157,8 +185,13 @@ public class GlobalExceptionHandler {
                 .body(ApiErrorResponse.of("INTERNAL_ERROR", "エラーが発生しました。"));
     }
 
-    private static ApiErrorResponse toApiError(FieldError error) {
-        String key = error.getField() + ":" + error.getCode();
+    /**
+     * 表に載っていない組み合わせは汎用の INVALID_REQUEST にする。対象が分からない
+     * （VALIDATION_TARGETS に無いリクエスト）場合も同じ扱いで、当てずっぽうのコードを
+     * 返さない。画面側は code で分岐するので、間違ったコードは黙って誤った分岐を通す。
+     */
+    private static ApiErrorResponse toApiError(String target, FieldError error) {
+        String key = target + ":" + error.getField() + ":" + error.getCode();
         return VALIDATION_ERRORS.getOrDefault(
                 key,
                 new ApiErrorResponse("INVALID_REQUEST", "入力内容が正しくありません。", error.getField()));

@@ -15,6 +15,13 @@ public class BoardService {
     /** 1 つのリストに置けるタスクの上限（docs/design/api.md 2.3）。 */
     private static final int MAX_CARDS_PER_LIST = 200;
 
+    /**
+     * 1 つのボードに追加できるリストの上限（docs/design/api.md 2.3）。
+     *
+     * <p>数えるのは追加されたリストだけで、seed の 3 列は含めない。
+     */
+    private static final int MAX_ADDED_LISTS_PER_BOARD = 10;
+
     private final BoardRepository boardRepository;
     private final TaskListRepository taskListRepository;
     private final CardRepository cardRepository;
@@ -57,6 +64,52 @@ public class BoardService {
         return boardRepository.findBoardWithListsAndCards()
                 .map(BoardResponse::from)
                 .orElseThrow(BoardNotFoundException::new);
+    }
+
+    /**
+     * リストを「完了」列の左隣に追加する（F-02）。仕様は docs/design/api.md 3.2。
+     *
+     * <p>挿入位置は受け取らない。完了列は常に最右であり（is_fixed_last）、新しいリストは
+     * その手前に入ると決まっているため、位置を指定させる余地がない。
+     *
+     * <p>完了列以降を +1 してから、空いた番号を新しいリストに振る。この 2 つは同じ
+     * トランザクションに入れる。途中で失敗して「+1 だけされた」状態が残ると、連番に穴が
+     * 空いたまま誰も直せなくなる（createCard と同じ理由）。
+     *
+     * <p>ID と persist の扱い、ボード全体を返す理由も createCard と同じ。
+     *
+     * @throws ListNotFoundException      完了列が見つからないとき。seed で必ず存在する前提
+     *                                    なので、これはデータの異常であり素通りさせない
+     * @throws ListLimitExceededException ボードのリストが既に上限に達しているとき
+     */
+    @Transactional
+    public BoardResponse createList(CreateListRequest request) {
+        // 挿入位置の基準。ここから board も辿れるので、ボードを別に読み直さない
+        TaskList fixedLast = taskListRepository.findByIsFixedLastTrue()
+                .orElseThrow(ListNotFoundException::new);
+
+        // LAZY なプロキシだが、id を取るだけなら SELECT は飛ばない（ID は既に分かっている）
+        UUID boardId = fixedLast.getBoard().getId();
+
+        if (taskListRepository.countByBoardIdAndIsDefaultFalse(boardId) >= MAX_ADDED_LISTS_PER_BOARD) {
+            throw new ListLimitExceededException();
+        }
+
+        int position = fixedLast.getPosition();
+
+        // 先に位置を控えてからずらす。shiftPositionsDown の clearAutomatically で
+        // fixedLast は管理下から外れるため、この後に getPosition を呼んでも意味がない
+        taskListRepository.shiftPositionsDown(boardId, position);
+
+        Board board = entityManager.getReference(Board.class, boardId);
+
+        // 追加したリストは既定の 3 列ではないので、改名・削除・移動をすべて許す
+        // （is_default = false, is_fixed_last = false）
+        TaskList list = new TaskList(request.id(), board, request.title(), false, false, position);
+
+        entityManager.persist(list);
+
+        return loadBoard();
     }
 
     /**

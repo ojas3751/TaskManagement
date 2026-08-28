@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Board, Card } from '../api/types'
-import { withCards, withUpdatedCard, withoutCard } from './boardEdit'
+import { withCards, withList, withUpdatedCard, withoutCard, withoutList } from './boardEdit'
 
 const card = (id: string, position: number): Card => ({
   id,
@@ -41,6 +41,82 @@ const board: Board = {
     },
   ],
 }
+
+/** 表示順。盤面と同じく position の昇順で並べる */
+const displayed = (b: Board) => [...b.lists].sort((x, y) => x.position - y.position).map((l) => l.title)
+
+describe('withList', () => {
+  it('完了列の直前に並ぶ', () => {
+    const next = withList(board, 'new', '設計')
+
+    expect(displayed(next)).toEqual(['TODO', '進行中', '設計', '完了'])
+  })
+
+  it('2つ足しても完了列が最後に残る', () => {
+    const next = withList(withList(board, 'first', '1つ目'), 'second', '2つ目')
+
+    // 暫定の position が同値になると、並びが配列の順序に依存してしまう。
+    // 完了列より手前であればよく、追加分どうしの前後は応答で確定する
+    expect(displayed(next).at(-1)).toBe('完了')
+    expect(displayed(next)).toHaveLength(5)
+  })
+
+  it('追加した列は改名・削除・移動を許す形で入る', () => {
+    const next = withList(board, 'new', '設計')
+    const added = next.lists.find((l) => l.id === 'new')
+
+    expect(added?.is_default).toBe(false)
+    expect(added?.is_fixed_last).toBe(false)
+    expect(added?.cards).toEqual([])
+  })
+
+  it('完了列が無ければ末尾に置く', () => {
+    const noFixedLast: Board = { ...board, lists: board.lists.filter((l) => !l.is_fixed_last) }
+    const next = withList(noFixedLast, 'new', '設計')
+
+    expect(displayed(next)).toEqual(['TODO', '進行中', '設計'])
+  })
+
+  it('元の board は変更しない', () => {
+    withList(board, 'new', '設計')
+
+    expect(board.lists).toHaveLength(3)
+  })
+})
+
+describe('withoutList', () => {
+  it('該当のリストを中のタスクごと取り除く', () => {
+    const next = withoutList(board, 'todo')
+
+    expect(next.lists.map((l) => l.id)).toEqual(['doing', 'done'])
+    expect(next.lists.flatMap((l) => l.cards).map((c) => c.id)).toEqual(['c'])
+  })
+
+  it('残ったリストの position は詰め直さない', () => {
+    const next = withoutList(board, 'todo')
+
+    expect(next.lists.map((l) => l.position)).toEqual([1, 2])
+  })
+
+  it('追加に失敗したときは足す前に戻る', () => {
+    // 巻き戻しの経路。withList で足した列を id で外すだけで元に戻る
+    const added = withList(board, 'new', '設計')
+
+    expect(withoutList(added, 'new')).toEqual(board)
+  })
+
+  it('存在しない id では何も変わらない', () => {
+    const next = withoutList(board, 'nowhere')
+
+    expect(next.lists.map((l) => l.id)).toEqual(['todo', 'doing', 'done'])
+  })
+
+  it('元の board は変更しない', () => {
+    withoutList(board, 'todo')
+
+    expect(board.lists).toHaveLength(3)
+  })
+})
 
 describe('withCards', () => {
   it('指定したリストの cards だけ差し替える', () => {

@@ -77,6 +77,24 @@ export async function fetchBoard(): Promise<Board> {
 }
 
 /**
+ * リストを「完了」列の左隣に追加する（F-02）。仕様は docs/design/api.md 3.2。
+ *
+ * 挿入位置は送らない。追加先は完了列の左隣と決まっており、position の採番は
+ * サーバーだけが持つ。id を呼び出し側が採番する理由は createCard と同じ。
+ */
+export async function createList(input: { id: string; title: string }): Promise<Board> {
+  const res = await apiFetch('/api/lists', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+
+  if (!res.ok) throw await toApiError(res, 'リストを追加できませんでした')
+
+  return (await res.json()) as Board
+}
+
+/**
  * タスクをリストの先頭に追加する（F-06）。仕様は docs/design/api.md 3.6。
  *
  * id は呼び出し側が採番して渡す。サーバーの応答を待たずに画面へ描くため、
