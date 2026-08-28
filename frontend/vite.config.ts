@@ -1,4 +1,5 @@
-import { defineConfig } from 'vite'
+// vite ではなく vitest/config から取る。test の設定は Vite の型に含まれていないため
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -18,5 +19,12 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    // コンポーネントのテストにはブラウザの DOM が要る（#47）。
+    // src/lib/ の純粋関数は DOM を触らないので、全体を jsdom にしても影響はない
+    environment: 'jsdom',
+    // @testing-library/jest-dom のマッチャ（toBeInTheDocument など）を全テストで使う
+    setupFiles: ['./src/test/setup.ts'],
   },
 })
