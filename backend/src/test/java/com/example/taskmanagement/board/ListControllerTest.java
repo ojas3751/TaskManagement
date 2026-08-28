@@ -1,5 +1,9 @@
 package com.example.taskmanagement.board;
 
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.is;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -14,7 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
 
 /**
- * リストの API の振る舞い（docs/design/api.md 3.2, 3.3）。
+ * リストの API の振る舞い（docs/design/api.md 3.2, 3.3, 3.4）。
  *
  * <p>タスク側は {@link BoardControllerTest} が持つ。同じコントローラだが、確かめている
  * 対象が別なのでファイルを分ける。
@@ -155,6 +159,58 @@ class ListControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("LIST_TITLE_TOO_LONG"))
                 .andExpect(jsonPath("$.message").value("リスト名は50文字以内で入力してください。"));
+    }
+
+    @Test
+    void 追加したリストは中のタスクごと削除できる() throws Exception {
+        UUID listId = UUID.randomUUID();
+        mockMvc.perform(postList(listId, "消すリスト")).andExpect(status().isCreated());
+
+        String card = """
+                {"id": "%s", "list_id": "%s", "title": "道連れになるタスク"}
+                """.formatted(UUID.randomUUID(), listId);
+        mockMvc.perform(post("/api/cards").contentType(MediaType.APPLICATION_JSON).content(card))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(delete("/api/lists/{id}", listId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists.length()").value(3))
+                // seed の3列だけが残る。中のタスクも一緒に消えるので、どこかへ移ることはない
+                .andExpect(jsonPath("$.lists[*].title", contains("TODO", "進行中", "完了")))
+                .andExpect(jsonPath("$.lists[*].cards.length()", everyItem(is(0))));
+    }
+
+    @Test
+    void 削除すると残ったリストのpositionが詰まる() throws Exception {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        mockMvc.perform(postList(first, "1つ目")).andExpect(status().isCreated());
+        mockMvc.perform(postList(second, "2つ目")).andExpect(status().isCreated());
+
+        // 真ん中（position = 2 の「1つ目」）を消す。末尾を消すだけでは詰める処理が動かない
+        mockMvc.perform(delete("/api/lists/{id}", first))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[2].title").value("2つ目"))
+                .andExpect(jsonPath("$.lists[2].position").value(2))
+                // 穴が空いたままなら完了列の position は 4 のまま
+                .andExpect(jsonPath("$.lists[3].title").value("完了"))
+                .andExpect(jsonPath("$.lists[3].position").value(3));
+    }
+
+    @Test
+    void デフォルトの3列は削除できない() throws Exception {
+        for (String listId : new String[] {TODO_LIST_ID, DOING_LIST_ID, DONE_LIST_ID}) {
+            mockMvc.perform(delete("/api/lists/{id}", UUID.fromString(listId)))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("LIST_PROTECTED"));
+        }
+    }
+
+    @Test
+    void 存在しないリストの削除は404を返す() throws Exception {
+        mockMvc.perform(delete("/api/lists/{id}", UUID.randomUUID()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("LIST_NOT_FOUND"));
     }
 
     private static RequestBuilder patchList(UUID id, String title) {

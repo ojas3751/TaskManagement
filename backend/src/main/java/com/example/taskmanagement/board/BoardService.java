@@ -135,6 +135,52 @@ public class BoardService {
     }
 
     /**
+     * リストを、中のタスクごと削除する（F-04）。仕様は docs/design/api.md 3.4。
+     *
+     * <p>タスクは lists.cards の {@code cascade = ALL} と {@code orphanRemoval} で一緒に消える
+     * （DB 側にも ON DELETE CASCADE がある）。
+     *
+     * <p>削除と、空いた位置を詰める処理を同じトランザクションに入れる。理由は deleteCard と
+     * 同じで、「消えたが詰めていない」状態が残ると position の連番に穴が空く。
+     *
+     * @throws ListNotFoundException  対象のリストが存在しないとき
+     * @throws ListProtectedException デフォルトの 3 列を消そうとしたとき
+     */
+    @Transactional
+    public BoardResponse deleteList(UUID listId) {
+        TaskList list = taskListRepository.findById(listId).orElseThrow(ListNotFoundException::new);
+
+        // 画面は削除の入口を出さないが、API 単独で呼ばれても守る（api.md 2.3）
+        if (list.isDefault()) {
+            throw new ListProtectedException();
+        }
+
+        Board board = list.getBoard();
+        UUID boardId = board.getId();
+
+        // delete(list) を直接呼ばず、ボードから外して orphanRemoval に消させる。
+        // 理由は Board.removeList の Javadoc を参照（cascade = ALL が削除を打ち消す）
+        board.removeList(list);
+
+        // 削除を予約しただけでは DELETE が飛んでいない。続く再採番は永続化コンテキストを
+        // 迂回して DB を直接読み書きするため、先に書き出す（deleteCard と同じ）
+        taskListRepository.flush();
+
+        renumberLists(boardId);
+
+        return loadBoard();
+    }
+
+    /** ボード内のリストを、今の並び順のまま 0 から振り直す（空番を残さない）。 */
+    private void renumberLists(UUID boardId) {
+        List<TaskList> lists = taskListRepository.findByBoardIdOrderByPositionAsc(boardId);
+
+        for (int position = 0; position < lists.size(); position++) {
+            taskListRepository.placeList(lists.get(position).getId(), position);
+        }
+    }
+
+    /**
      * タスクをリストの先頭に追加する（F-06）。仕様は docs/design/api.md 3.6。
      *
      * <p>既存タスクの position を一括で +1 してから、新規に 0 を振る。この 2 つは

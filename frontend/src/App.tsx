@@ -4,6 +4,7 @@ import {
   createCard,
   createList,
   deleteCard,
+  deleteList,
   fetchBoard,
   moveCard,
   updateCard,
@@ -22,6 +23,7 @@ import { toCardIdsForAppend, withMovedCard } from './lib/moveCard'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
 import { ConfirmModal } from './components/ConfirmModal'
+import { ListDetailModal } from './components/ListDetailModal'
 import { LoadError } from './components/LoadError'
 
 type LoadState =
@@ -113,6 +115,11 @@ export default function App() {
   // 削除の確認モーダルで対象にしているタスク。開いているタスクとは別に持つ。
   // 削除は詳細モーダルではなくカード上のアイコンから始まるため
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null)
+  // 詳細モーダルで開いているリスト（F-03, F-04）。カードと同じく id で持つ。
+  // 列ではなく App が持つのは、削除が確認モーダルへ続くため
+  const [openListId, setOpenListId] = useState<string | null>(null)
+  // 削除の確認モーダルで対象にしているリスト
+  const [deletingListId, setDeletingListId] = useState<string | null>(null)
   // 追加などの操作が失敗したときのメッセージ。LoadState とは別に持つ。
   // 一緒にしてしまうと、追加に失敗しただけで画面全体が LoadError に
   // 置き換わり、まだ読めていたはずの盤面まで消える
@@ -224,6 +231,7 @@ export default function App() {
       if (before === undefined) return
 
       setActionError(null)
+      setOpenListId(null)
       setState({ status: 'ready', board: withRenamedList(state.board, listId, title) })
 
       setPending((n) => n + 1)
@@ -237,6 +245,38 @@ export default function App() {
                 ? { status: 'ready', board: withRenamedList(prev.board, listId, before) }
                 : prev,
             )
+          },
+        )
+        .finally(() => setPending((n) => n - 1))
+    },
+    [state, isBusy],
+  )
+
+  /**
+   * リストを、中のタスクごと削除する（F-04）。
+   *
+   * 失敗したときは削除前のボードへ丸ごと戻す。列が消えるとタスクも一緒に消えるので、
+   * 戻す単位も盤面になる。この形が正しい前提（飛んでいるリクエストが常に1本）は
+   * handleDeleteCard のコメントを参照。
+   */
+  const handleDeleteList = useCallback(
+    (listId: string) => {
+      if (state.status !== 'ready' || isBusy) return
+
+      const before = state.board
+
+      setActionError(null)
+      setDeletingListId(null)
+
+      setState({ status: 'ready', board: withoutList(before, listId) })
+
+      setPending((n) => n + 1)
+      deleteList(listId)
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+            setState({ status: 'ready', board: before })
           },
         )
         .finally(() => setPending((n) => n - 1))
@@ -442,6 +482,12 @@ export default function App() {
     state.status === 'ready' && openCardId ? findListOfCard(state.board, openCardId) : undefined
   const deletingCard =
     state.status === 'ready' && deletingCardId ? findCard(state.board, deletingCardId) : undefined
+  // リストも id で持っているので、盤面が差し替わっても常に最新の中身を見る
+  const findList = (listId: string) => state.status === 'ready'
+    ? state.board.lists.find((list) => list.id === listId)
+    : undefined
+  const openList = openListId ? findList(openListId) : undefined
+  const deletingList = deletingListId ? findList(deletingListId) : undefined
 
   return (
     <>
@@ -510,7 +556,7 @@ export default function App() {
           <BoardView
             board={state.board}
             onAddList={handleAddList}
-            onRenameList={handleRenameList}
+            onOpenList={setOpenListId}
             onAddCard={handleAddCard}
             onOpenCard={setOpenCardId}
             onDeleteCard={setDeletingCardId}
@@ -525,6 +571,36 @@ export default function App() {
           lists={sortedLists(state.board)}
           onSave={(input) => handleSaveCard(openCard.id, input)}
           onCancel={() => setOpenCardId(null)}
+        />
+      )}
+
+      {openList && (
+        <ListDetailModal
+          list={openList}
+          onSave={(title) => handleRenameList(openList.id, title)}
+          onDelete={() => {
+            // 確認へ進む前に詳細を閉じる。モーダルを2枚重ねない
+            setOpenListId(null)
+            setDeletingListId(openList.id)
+          }}
+          onCancel={() => setOpenListId(null)}
+        />
+      )}
+
+      {deletingList && (
+        <ConfirmModal
+          title="削除の確認"
+          lines={[
+            `リスト「${deletingList.title}」を削除します。`,
+            // 何が道連れになるかを数で見せる（画面設計 7章）
+            deletingList.cards.length === 0
+              ? '中にタスクはありません。'
+              : `中のタスク${deletingList.cards.length}件も一緒に削除されます。`,
+            'この操作は取り消せません。',
+          ]}
+          confirmLabel="削除する"
+          onConfirm={() => handleDeleteList(deletingList.id)}
+          onCancel={() => setDeletingListId(null)}
         />
       )}
 
