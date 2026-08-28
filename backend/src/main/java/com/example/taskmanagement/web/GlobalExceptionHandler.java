@@ -7,6 +7,7 @@ import com.example.taskmanagement.board.CardNotFoundException;
 import com.example.taskmanagement.board.DueTimeWithoutDueDateException;
 import com.example.taskmanagement.board.ListLimitExceededException;
 import com.example.taskmanagement.board.ListNotFoundException;
+import com.example.taskmanagement.board.ListProtectedException;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +45,8 @@ public class GlobalExceptionHandler {
     private static final Map<String, String> VALIDATION_TARGETS = Map.of(
             "createCardRequest", "CARD",
             "updateCardRequest", "CARD",
-            "createListRequest", "LIST");
+            "createListRequest", "LIST",
+            "updateListRequest", "LIST");
 
     /**
      * 入力検証の違反を、画面側が分岐に使えるコードへ対応づける表。
@@ -102,6 +104,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleCardIdsMismatch(CardIdsMismatchException e) {
         return ResponseEntity.badRequest()
                 .body(ApiErrorResponse.of("CARD_IDS_MISMATCH", "表示が最新ではありません。再読み込みしてください"));
+    }
+
+    /**
+     * デフォルトの 3 列への改名・削除（docs/design/api.md 2.3）。
+     *
+     * <p>再読み込みでは直らないので、404 の系統とは文言を分けて理由を伝える。
+     */
+    @ExceptionHandler(ListProtectedException.class)
+    public ResponseEntity<ApiErrorResponse> handleListProtected(ListProtectedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("LIST_PROTECTED",
+                        "最初からあるリストは名前の変更や削除ができません"));
     }
 
     @ExceptionHandler(ListLimitExceededException.class)

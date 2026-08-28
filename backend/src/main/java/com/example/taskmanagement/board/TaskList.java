@@ -77,6 +77,17 @@ public class TaskList {
     }
 
     /**
+     * リスト名を変える（F-03）。
+     *
+     * <p>保護されたリスト（{@code isDefault}）かどうかの判断はここではしない。
+     * 呼び出し側（BoardService）が先に弾く。エンティティは「変えられる」ことだけを
+     * 引き受け、変えてよいかの判断は業務の側に置く。
+     */
+    public void rename(String title) {
+        this.title = title;
+    }
+
+    /**
      * タスクをこのリストから外す（F-08）。
      *
      * <p><strong>削除はこの経路で行う。</strong>{@code EntityManager.remove(card)} を直接

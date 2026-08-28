@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Board, Card } from '../api/types'
-import { withCards, withList, withUpdatedCard, withoutCard, withoutList } from './boardEdit'
+import {
+  withCards,
+  withList,
+  withRenamedList,
+  withUpdatedCard,
+  withoutCard,
+  withoutList,
+} from './boardEdit'
 
 const card = (id: string, position: number): Card => ({
   id,
@@ -81,6 +88,40 @@ describe('withList', () => {
     withList(board, 'new', '設計')
 
     expect(board.lists).toHaveLength(3)
+  })
+})
+
+describe('withRenamedList', () => {
+  it('該当のリストの名前だけ差し替える', () => {
+    const next = withRenamedList(board, 'doing', '作業中')
+
+    expect(next.lists.map((l) => l.title)).toEqual(['TODO', '作業中', '完了'])
+  })
+
+  it('中のタスクと位置は触らない', () => {
+    const next = withRenamedList(board, 'todo', 'やること')
+
+    expect(next.lists[0].cards.map((c) => c.id)).toEqual(['a', 'b'])
+    expect(next.lists[0].position).toBe(0)
+  })
+
+  it('元の名前を入れ直せば変更前に戻る', () => {
+    // 巻き戻しの経路。盤面ごと控えなくても、名前を戻すだけで元に戻る
+    const renamed = withRenamedList(board, 'doing', '作業中')
+
+    expect(withRenamedList(renamed, 'doing', '進行中')).toEqual(board)
+  })
+
+  it('存在しない id では何も変わらない', () => {
+    const next = withRenamedList(board, 'nowhere', '作業中')
+
+    expect(next.lists.map((l) => l.title)).toEqual(['TODO', '進行中', '完了'])
+  })
+
+  it('元の board は変更しない', () => {
+    withRenamedList(board, 'doing', '作業中')
+
+    expect(board.lists[1].title).toBe('進行中')
   })
 })
 

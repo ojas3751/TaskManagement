@@ -1,5 +1,6 @@
 package com.example.taskmanagement.board;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -13,7 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
 
 /**
- * リストの API の振る舞い（docs/design/api.md 3.2）。
+ * リストの API の振る舞い（docs/design/api.md 3.2, 3.3）。
  *
  * <p>タスク側は {@link BoardControllerTest} が持つ。同じコントローラだが、確かめている
  * 対象が別なのでファイルを分ける。
@@ -23,6 +24,11 @@ import org.springframework.test.web.servlet.RequestBuilder;
  */
 @IntegrationTest
 class ListControllerTest {
+
+    /** seed が作る 3 列。V2__seed_default_board.sql の固定 ID。 */
+    private static final String TODO_LIST_ID = "00000000-0000-4000-8000-000000000101";
+    private static final String DOING_LIST_ID = "00000000-0000-4000-8000-000000000102";
+    private static final String DONE_LIST_ID = "00000000-0000-4000-8000-000000000103";
 
     @Autowired
     private MockMvc mockMvc;
@@ -96,6 +102,67 @@ class ListControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("LIST_LIMIT_EXCEEDED"))
                 .andExpect(jsonPath("$.message").value("追加できるリストは10件までです"));
+    }
+
+    @Test
+    void 追加したリストは改名できる() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockMvc.perform(postList(id, "改名前")).andExpect(status().isCreated());
+
+        mockMvc.perform(patchList(id, "改名後"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[2].title").value("改名後"))
+                // 名前だけが変わり、位置は動かない。並び替えは別のエンドポイント（F-05）
+                .andExpect(jsonPath("$.lists[2].position").value(2))
+                .andExpect(jsonPath("$.lists[3].title").value("完了"));
+    }
+
+    @Test
+    void デフォルトの3列は改名できない() throws Exception {
+        // 画面は改名ボタンを出さないが、API 単独で呼ばれても守る（api.md 2.3）
+        for (String listId : new String[] {TODO_LIST_ID, DOING_LIST_ID, DONE_LIST_ID}) {
+            mockMvc.perform(patchList(UUID.fromString(listId), "書き換えてみる"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("LIST_PROTECTED"));
+        }
+    }
+
+    @Test
+    void 存在しないリストの改名は404を返す() throws Exception {
+        mockMvc.perform(patchList(UUID.randomUUID(), "どこにもないリスト"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("LIST_NOT_FOUND"));
+    }
+
+    @Test
+    void 改名でリスト名が空なら400を返す() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockMvc.perform(postList(id, "名前を消してみるリスト")).andExpect(status().isCreated());
+
+        // 追加のときと同じく、CARD_ ではなく LIST_ が返ること。対応表に
+        // updateListRequest を登録しないと、汎用の INVALID_REQUEST に落ちる
+        mockMvc.perform(patchList(id, "  "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LIST_TITLE_REQUIRED"));
+    }
+
+    @Test
+    void 改名でリスト名が50文字を超えたら400を返す() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockMvc.perform(postList(id, "長い名前にするリスト")).andExpect(status().isCreated());
+
+        mockMvc.perform(patchList(id, "あ".repeat(51)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LIST_TITLE_TOO_LONG"))
+                .andExpect(jsonPath("$.message").value("リスト名は50文字以内で入力してください。"));
+    }
+
+    private static RequestBuilder patchList(UUID id, String title) {
+        String body = """
+                {"title": "%s"}
+                """.formatted(title);
+
+        return patch("/api/lists/{id}", id).contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
     private static RequestBuilder postList(UUID id, String title) {

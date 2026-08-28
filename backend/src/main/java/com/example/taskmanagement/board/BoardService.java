@@ -113,6 +113,28 @@ public class BoardService {
     }
 
     /**
+     * リスト名を変える（F-03）。仕様は docs/design/api.md 3.3。
+     *
+     * <p>save() を呼んでいないのは updateCard と同じ理由（ダーティチェック）。
+     *
+     * @throws ListNotFoundException  対象のリストが存在しないとき
+     * @throws ListProtectedException デフォルトの 3 列を変えようとしたとき
+     */
+    @Transactional
+    public BoardResponse updateList(UUID listId, UpdateListRequest request) {
+        TaskList list = taskListRepository.findById(listId).orElseThrow(ListNotFoundException::new);
+
+        // 画面はデフォルト列に改名ボタンを出さないが、API 単独で呼ばれても守る（api.md 2.3）
+        if (list.isDefault()) {
+            throw new ListProtectedException();
+        }
+
+        list.rename(request.title());
+
+        return loadBoard();
+    }
+
+    /**
      * タスクをリストの先頭に追加する（F-06）。仕様は docs/design/api.md 3.6。
      *
      * <p>既存タスクの position を一括で +1 してから、新規に 0 を振る。この 2 つは

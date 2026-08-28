@@ -1,7 +1,14 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { BoardApiError, createCard, createList, deleteCard, fetchBoard } from './api/board'
+import {
+  BoardApiError,
+  createCard,
+  createList,
+  deleteCard,
+  fetchBoard,
+  updateList,
+} from './api/board'
 import type { Board, Card } from './api/types'
 
 /**
@@ -14,6 +21,7 @@ vi.mock('./api/board', async (importOriginal) => {
     ...actual,
     fetchBoard: vi.fn(),
     createList: vi.fn(),
+    updateList: vi.fn(),
     createCard: vi.fn(),
     updateCard: vi.fn(),
     moveCard: vi.fn(),
@@ -72,9 +80,31 @@ const board: Board = {
 /** DB が止まっているときにバックエンドが返すもの（503 / DB_UNAVAILABLE） */
 const dbDown = new BoardApiError(503, 'DB_UNAVAILABLE', 'データベースに接続できません。')
 
+/**
+ * 追加した列がある盤面（F-03 の対象）。
+ *
+ * 既定の board と分けているのは、改名ボタンが出るのが `is_default` が false の
+ * 列だけであり、seed の3列しかない盤面では確かめられないため。
+ */
+const boardWithAddedList: Board = {
+  ...board,
+  lists: [
+    board.lists[0],
+    {
+      id: 'design',
+      title: '設計',
+      is_default: false,
+      is_fixed_last: false,
+      position: 1,
+      cards: [],
+    },
+    board.lists[1],
+  ],
+}
+
 /** App を描いて、ボードが出るまで待つ */
-async function renderBoard() {
-  vi.mocked(fetchBoard).mockResolvedValue(board)
+async function renderBoard(initial: Board = board) {
+  vi.mocked(fetchBoard).mockResolvedValue(initial)
   const view = render(<App />)
   expect(await screen.findByText('牛乳を買う')).toBeInTheDocument()
   return view
@@ -158,6 +188,55 @@ describe('リストの追加（F-02）', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('追加できるリストは10件までです')
     expect(listTitles()).toEqual(['TODO', '完了'])
+  })
+})
+
+describe('リストの改名（F-03）', () => {
+  it('デフォルトの3列には編集アイコンを出さない', async () => {
+    await renderBoard()
+
+    // 盤面には TODO と 完了 しかない。どちらも is_default
+    expect(screen.queryByRole('button', { name: /名前を変更/ })).not.toBeInTheDocument()
+  })
+
+  it('追加した列にだけ編集アイコンを出す', async () => {
+    await renderBoard(boardWithAddedList)
+
+    expect(screen.getAllByRole('button', { name: /名前を変更/ })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '「設計」の名前を変更' })).toBeInTheDocument()
+  })
+
+  it('現在の名前が入った状態で開き、応答を待たずに書き換える', async () => {
+    await renderBoard(boardWithAddedList)
+    const pending = deferred<Board>()
+    vi.mocked(updateList).mockReturnValue(pending.promise)
+
+    fireEvent.click(screen.getByRole('button', { name: '「設計」の名前を変更' }))
+    // 付け直しではなく手直しになるよう、現在の名前を入れておく
+    expect(screen.getByLabelText('リスト名')).toHaveValue('設計')
+
+    fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: '設計・調査' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(listTitles()).toEqual(['TODO', '設計・調査', '完了'])
+    expect(updateList).toHaveBeenCalledWith('design', { title: '設計・調査' })
+
+    await act(async () => {
+      pending.resolve(boardWithAddedList)
+    })
+  })
+
+  it('改名に失敗したら、元の名前に戻る', async () => {
+    await renderBoard(boardWithAddedList)
+    vi.mocked(updateList).mockRejectedValue(dbDown)
+
+    fireEvent.click(screen.getByRole('button', { name: '「設計」の名前を変更' }))
+    fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: '設計・調査' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(listTitles()).toContain('設計・調査')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('データベースに接続できません。')
+    expect(listTitles()).toEqual(['TODO', '設計', '完了'])
   })
 })
 

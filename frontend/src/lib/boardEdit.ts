@@ -35,6 +35,19 @@ export function withList(board: Board, id: string, title: string): Board {
 }
 
 /**
+ * 1つのリストの名前を差し替えた新しい board を返す（元の board は変更しない）。
+ *
+ * 保護されたリスト（is_default）かどうかは見ない。改名ボタンを出すかどうかで
+ * 既に絞っており、最終的な担保はサーバーの 409（api.md 3.3）。
+ */
+export function withRenamedList(board: Board, listId: string, title: string): Board {
+  return {
+    ...board,
+    lists: board.lists.map((list) => (list.id === listId ? { ...list, title } : list)),
+  }
+}
+
+/**
  * 1つのリストを取り除いた新しい board を返す（元の board は変更しない）。
  *
  * 残ったリストの position は詰め直さない（withoutCard と同じ理由）。

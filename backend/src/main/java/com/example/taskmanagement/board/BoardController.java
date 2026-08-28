@@ -45,6 +45,18 @@ public class BoardController {
     }
 
     /**
+     * リスト名の変更（F-03）。仕様は docs/design/api.md 3.3。
+     *
+     * <p>PUT ではなく PATCH なのは、リストの全項目を置き換えるわけではないため。
+     * position はここでは変えられず、並び替えは PATCH /api/lists/reorder が担う。
+     */
+    @PatchMapping("/api/lists/{id}")
+    public BoardResponse updateList(@PathVariable UUID id,
+                                    @Valid @RequestBody UpdateListRequest request) {
+        return boardService.updateList(id, request);
+    }
+
+    /**
      * タスクの追加（F-06）。仕様は docs/design/api.md 3.6。
      *
      * <p>返すのは処理後のボード全体（api.md 2.7）。画面側は応答を待たずに描いたうえで、
