@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BoardApiError, createCard, deleteCard, fetchBoard, moveCard, updateCard } from './api/board'
+import {
+  BoardApiError,
+  createCard,
+  createList,
+  deleteCard,
+  fetchBoard,
+  moveCard,
+  updateCard,
+} from './api/board'
 import type { Board, Card, TaskList } from './api/types'
-import { withCards, withUpdatedCard, withoutCard } from './lib/boardEdit'
+import { withCards, withList, withUpdatedCard, withoutCard, withoutList } from './lib/boardEdit'
 import { toCardIdsForAppend, withMovedCard } from './lib/moveCard'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
@@ -147,6 +155,48 @@ export default function App() {
       clearTimeout(checking)
     }
   }, [isBusy])
+
+  /**
+   * リストを追加する（F-02）。
+   *
+   * 形は handleAddCard と同じ。先に画面へ反映し、成功したら返ってきたボード全体で
+   * 置き換え、失敗したら足した分だけ取り除いて戻す。
+   *
+   * 件数の上限（追加分で10件）は画面では見ない。サーバーが 409 で断り、その文言を
+   * そのまま出す。上限の判断をサーバーだけが持つようにするため（api.md 2.3）。
+   */
+  const handleAddList = useCallback(
+    (title: string) => {
+      // 応答待ちの間は盤面が inert なのでここには来ないが、保険として置く
+      if (isBusy) return
+
+      const id = crypto.randomUUID()
+      setActionError(null)
+
+      setState((prev) =>
+        prev.status === 'ready'
+          ? { status: 'ready', board: withList(prev.board, id, title) }
+          : prev,
+      )
+
+      setPending((n) => n + 1)
+      createList({ id, title })
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+            // 足した列を取り除くだけで追加前に戻る。既存の列には触っていない
+            setState((prev) =>
+              prev.status === 'ready'
+                ? { status: 'ready', board: withoutList(prev.board, id) }
+                : prev,
+            )
+          },
+        )
+        .finally(() => setPending((n) => n - 1))
+    },
+    [isBusy],
+  )
 
   /**
    * タスクを追加する（F-06）。
@@ -413,6 +463,7 @@ export default function App() {
         <div inert={isBusy} className={waitPhase === 'idle' ? undefined : 'opacity-60'}>
           <BoardView
             board={state.board}
+            onAddList={handleAddList}
             onAddCard={handleAddCard}
             onOpenCard={setOpenCardId}
             onDeleteCard={setDeletingCardId}

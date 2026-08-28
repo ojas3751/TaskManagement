@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { BoardApiError, createCard, deleteCard, fetchBoard } from './api/board'
+import { BoardApiError, createCard, createList, deleteCard, fetchBoard } from './api/board'
 import type { Board, Card } from './api/types'
 
 /**
@@ -13,6 +13,7 @@ vi.mock('./api/board', async (importOriginal) => {
   return {
     ...actual,
     fetchBoard: vi.fn(),
+    createList: vi.fn(),
     createCard: vi.fn(),
     updateCard: vi.fn(),
     moveCard: vi.fn(),
@@ -86,6 +87,18 @@ function addTask(title: string) {
   fireEvent.click(screen.getByRole('button', { name: '追加' }))
 }
 
+/** 「＋ リスト追加」から列を足す（F-02） */
+function addList(title: string) {
+  fireEvent.click(screen.getByRole('button', { name: '＋ リスト追加' }))
+  fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: title } })
+  fireEvent.click(screen.getByRole('button', { name: '追加' }))
+}
+
+/** 盤面に出ている列を、表示されている順で返す */
+function listTitles(): string[] {
+  return [...document.querySelectorAll('section h2')].map((h) => h.textContent ?? '')
+}
+
 /** ゴミ箱アイコンから削除する（確認モーダルまで進む） */
 function deleteTask(title: string) {
   fireEvent.click(screen.getByRole('button', { name: `「${title}」を削除` }))
@@ -104,6 +117,48 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('リストの追加（F-02）', () => {
+  it('応答を待たずに、完了列の左隣へ描く', async () => {
+    await renderBoard()
+    const pending = deferred<Board>()
+    vi.mocked(createList).mockReturnValue(pending.promise)
+
+    addList('設計')
+
+    // 完了列は最右のまま。ここが崩れると F-05 の前提（完了列の固定）も崩れる
+    expect(listTitles()).toEqual(['TODO', '設計', '完了'])
+    expect(createList).toHaveBeenCalledWith(expect.objectContaining({ title: '設計' }))
+
+    await act(async () => {
+      pending.resolve(board)
+    })
+  })
+
+  it('追加に失敗したら、足した列が消える', async () => {
+    await renderBoard()
+    vi.mocked(createList).mockRejectedValue(dbDown)
+
+    addList('設計')
+    expect(listTitles()).toContain('設計')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('データベースに接続できません。')
+    expect(listTitles()).toEqual(['TODO', '完了'])
+  })
+
+  it('上限に達していたら、サーバーの文言をそのまま出す', async () => {
+    await renderBoard()
+    // 上限の判断はサーバーだけが持つ（api.md 2.3）。画面は件数を数えない
+    vi.mocked(createList).mockRejectedValue(
+      new BoardApiError(409, 'LIST_LIMIT_EXCEEDED', '追加できるリストは10件までです'),
+    )
+
+    addList('11件目')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('追加できるリストは10件までです')
+    expect(listTitles()).toEqual(['TODO', '完了'])
+  })
 })
 
 describe('操作の失敗と巻き戻し', () => {

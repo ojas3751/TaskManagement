@@ -33,6 +33,18 @@ public class BoardController {
     }
 
     /**
+     * リストの追加（F-02）。仕様は docs/design/api.md 3.2。
+     *
+     * <p>挿入位置は body に含めない。追加先は「完了」列の左隣と決まっており、position の
+     * 採番はサーバーだけが持つ。
+     */
+    @PostMapping("/api/lists")
+    @ResponseStatus(HttpStatus.CREATED)
+    public BoardResponse createList(@Valid @RequestBody CreateListRequest request) {
+        return boardService.createList(request);
+    }
+
+    /**
      * タスクの追加（F-06）。仕様は docs/design/api.md 3.6。
      *
      * <p>返すのは処理後のボード全体（api.md 2.7）。画面側は応答を待たずに描いたうえで、
