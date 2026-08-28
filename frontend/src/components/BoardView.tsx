@@ -6,6 +6,7 @@ import { NameInputModal } from './NameInputModal'
 type Props = {
   board: Board
   onAddList: (title: string) => void
+  onRenameList: (listId: string, title: string) => void
   onAddCard: (listId: string, title: string) => void
   onOpenCard: (cardId: string) => void
   onDeleteCard: (cardId: string) => void
@@ -17,7 +18,14 @@ type Props = {
  * 列が増えると横幅に収まらなくなるので、はみ出した分は横スクロールで見せる。
  * 列を縮めて詰め込むと 1 列あたりのタスクが読めなくなるため。
  */
-export function BoardView({ board, onAddList, onAddCard, onOpenCard, onDeleteCard }: Props) {
+export function BoardView({
+  board,
+  onAddList,
+  onRenameList,
+  onAddCard,
+  onOpenCard,
+  onDeleteCard,
+}: Props) {
   // 開閉はこの画面だけの状態なのでここで持つ（ListColumn の [+ タスク追加] と同じ）
   const [isAdding, setIsAdding] = useState(false)
 
@@ -29,6 +37,7 @@ export function BoardView({ board, onAddList, onAddCard, onOpenCard, onDeleteCar
         <ListColumn
           key={list.id}
           list={list}
+          onRenameList={onRenameList}
           onAddCard={onAddCard}
           onOpenCard={onOpenCard}
           onDeleteCard={onDeleteCard}

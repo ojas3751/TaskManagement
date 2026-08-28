@@ -7,9 +7,17 @@ import {
   fetchBoard,
   moveCard,
   updateCard,
+  updateList,
 } from './api/board'
 import type { Board, Card, TaskList } from './api/types'
-import { withCards, withList, withUpdatedCard, withoutCard, withoutList } from './lib/boardEdit'
+import {
+  withCards,
+  withList,
+  withRenamedList,
+  withUpdatedCard,
+  withoutCard,
+  withoutList,
+} from './lib/boardEdit'
 import { toCardIdsForAppend, withMovedCard } from './lib/moveCard'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
@@ -196,6 +204,44 @@ export default function App() {
         .finally(() => setPending((n) => n - 1))
     },
     [isBusy],
+  )
+
+  /**
+   * リスト名を変える（F-03）。
+   *
+   * 先に画面へ反映し、失敗したら**変更前の名前**へ戻す。盤面ごと控えないのは、
+   * 変わるのが1つの列の名前だけで、他はどこも動かないため。
+   *
+   * デフォルトの3列かどうかは見ない。改名ボタンをそもそも出しておらず、
+   * 最終的な担保はサーバーの 409（api.md 3.3）。
+   */
+  const handleRenameList = useCallback(
+    (listId: string, title: string) => {
+      if (state.status !== 'ready' || isBusy) return
+
+      // 巻き戻しに使う値は、setState に渡す関数の中からではなく、いまの状態から取る
+      const before = state.board.lists.find((list) => list.id === listId)?.title
+      if (before === undefined) return
+
+      setActionError(null)
+      setState({ status: 'ready', board: withRenamedList(state.board, listId, title) })
+
+      setPending((n) => n + 1)
+      updateList(listId, { title })
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+            setState((prev) =>
+              prev.status === 'ready'
+                ? { status: 'ready', board: withRenamedList(prev.board, listId, before) }
+                : prev,
+            )
+          },
+        )
+        .finally(() => setPending((n) => n - 1))
+    },
+    [state, isBusy],
   )
 
   /**
@@ -464,6 +510,7 @@ export default function App() {
           <BoardView
             board={state.board}
             onAddList={handleAddList}
+            onRenameList={handleRenameList}
             onAddCard={handleAddCard}
             onOpenCard={setOpenCardId}
             onDeleteCard={setDeletingCardId}

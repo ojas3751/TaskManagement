@@ -95,6 +95,24 @@ export async function createList(input: { id: string; title: string }): Promise<
 }
 
 /**
+ * リスト名を変える（F-03）。仕様は docs/design/api.md 3.3。
+ *
+ * デフォルトの3列は 409（LIST_PROTECTED）で断られる。画面側でも改名ボタンを
+ * 出さないが、判断はサーバーが持つ。
+ */
+export async function updateList(id: string, input: { title: string }): Promise<Board> {
+  const res = await apiFetch(`/api/lists/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+
+  if (!res.ok) throw await toApiError(res, 'リスト名を変更できませんでした')
+
+  return (await res.json()) as Board
+}
+
+/**
  * タスクをリストの先頭に追加する（F-06）。仕様は docs/design/api.md 3.6。
  *
  * id は呼び出し側が採番して渡す。サーバーの応答を待たずに画面へ描くため、
