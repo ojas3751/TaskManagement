@@ -6,6 +6,7 @@ import {
   createCard,
   createList,
   deleteCard,
+  deleteList,
   fetchBoard,
   updateList,
 } from './api/board'
@@ -22,6 +23,7 @@ vi.mock('./api/board', async (importOriginal) => {
     fetchBoard: vi.fn(),
     createList: vi.fn(),
     updateList: vi.fn(),
+    deleteList: vi.fn(),
     createCard: vi.fn(),
     updateCard: vi.fn(),
     moveCard: vi.fn(),
@@ -124,6 +126,11 @@ function addList(title: string) {
   fireEvent.click(screen.getByRole('button', { name: '追加' }))
 }
 
+/** 追加した列の編集アイコンから、リストの詳細モーダルを開く（F-03, F-04） */
+function openListDetail(listTitle = '設計') {
+  fireEvent.click(screen.getByRole('button', { name: `「${listTitle}」の詳細` }))
+}
+
 /** 盤面に出ている列を、表示されている順で返す */
 function listTitles(): string[] {
   return [...document.querySelectorAll('section h2')].map((h) => h.textContent ?? '')
@@ -196,14 +203,14 @@ describe('リストの改名（F-03）', () => {
     await renderBoard()
 
     // 盤面には TODO と 完了 しかない。どちらも is_default
-    expect(screen.queryByRole('button', { name: /名前を変更/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /の詳細/ })).not.toBeInTheDocument()
   })
 
   it('追加した列にだけ編集アイコンを出す', async () => {
     await renderBoard(boardWithAddedList)
 
-    expect(screen.getAllByRole('button', { name: /名前を変更/ })).toHaveLength(1)
-    expect(screen.getByRole('button', { name: '「設計」の名前を変更' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /の詳細/ })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '「設計」の詳細' })).toBeInTheDocument()
   })
 
   it('現在の名前が入った状態で開き、応答を待たずに書き換える', async () => {
@@ -211,7 +218,7 @@ describe('リストの改名（F-03）', () => {
     const pending = deferred<Board>()
     vi.mocked(updateList).mockReturnValue(pending.promise)
 
-    fireEvent.click(screen.getByRole('button', { name: '「設計」の名前を変更' }))
+    openListDetail()
     // 付け直しではなく手直しになるよう、現在の名前を入れておく
     expect(screen.getByLabelText('リスト名')).toHaveValue('設計')
 
@@ -230,13 +237,91 @@ describe('リストの改名（F-03）', () => {
     await renderBoard(boardWithAddedList)
     vi.mocked(updateList).mockRejectedValue(dbDown)
 
-    fireEvent.click(screen.getByRole('button', { name: '「設計」の名前を変更' }))
+    openListDetail()
     fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: '設計・調査' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(listTitles()).toContain('設計・調査')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('データベースに接続できません。')
     expect(listTitles()).toEqual(['TODO', '設計', '完了'])
+  })
+})
+
+describe('リストの削除（F-04）', () => {
+  /** 中にタスクが2件ある「設計」列。道連れの件数を確かめるために使う */
+  const withTasks: Board = {
+    ...boardWithAddedList,
+    lists: boardWithAddedList.lists.map((list) =>
+      list.id === 'design'
+        ? { ...list, cards: [card('x', '調査する', 0), card('y', '図を描く', 1)] }
+        : list,
+    ),
+  }
+
+  it('確認モーダルに、道連れになるタスクの件数を出す', async () => {
+    await renderBoard(withTasks)
+
+    openListDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'このリストを削除' }))
+
+    // 何が失われるかを数で見せる（画面設計 7章）。列名だけでは、中身を忘れていると判断できない
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('リスト「設計」を削除します。')
+    expect(dialog).toHaveTextContent('中のタスク2件も一緒に削除されます。')
+  })
+
+  it('タスクが無ければ、その旨を出す', async () => {
+    await renderBoard(boardWithAddedList)
+
+    openListDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'このリストを削除' }))
+
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('中にタスクはありません。')
+  })
+
+  it('確認するまでは消さない', async () => {
+    await renderBoard(withTasks)
+
+    openListDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'このリストを削除' }))
+    expect(listTitles()).toContain('設計')
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(deleteList).not.toHaveBeenCalled()
+    expect(listTitles()).toContain('設計')
+  })
+
+  it('確認すると、応答を待たずに列ごと消える', async () => {
+    await renderBoard(withTasks)
+    const pending = deferred<Board>()
+    vi.mocked(deleteList).mockReturnValue(pending.promise)
+
+    openListDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'このリストを削除' }))
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }))
+
+    expect(listTitles()).toEqual(['TODO', '完了'])
+    // 中のタスクも一緒に消える。どこかへ移ることはない
+    expect(screen.queryByText('調査する')).not.toBeInTheDocument()
+    expect(deleteList).toHaveBeenCalledWith('design')
+
+    await act(async () => {
+      pending.resolve(board)
+    })
+  })
+
+  it('削除に失敗したら、列がタスクごと戻る', async () => {
+    await renderBoard(withTasks)
+    vi.mocked(deleteList).mockRejectedValue(dbDown)
+
+    openListDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'このリストを削除' }))
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }))
+    expect(listTitles()).not.toContain('設計')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('データベースに接続できません。')
+    expect(listTitles()).toEqual(['TODO', '設計', '完了'])
+    expect(screen.getByText('調査する')).toBeInTheDocument()
   })
 })
 

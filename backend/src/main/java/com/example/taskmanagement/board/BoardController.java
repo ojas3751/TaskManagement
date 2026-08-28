@@ -57,6 +57,17 @@ public class BoardController {
     }
 
     /**
+     * リストの削除（F-04）。仕様は docs/design/api.md 3.4。
+     *
+     * <p>中のタスクも一緒に消える。204 ではなくボード全体を返すのは、削除で変わるのが
+     * 対象のリストだけではなく、後続のリストの position も詰まるため（api.md 2.7）。
+     */
+    @DeleteMapping("/api/lists/{id}")
+    public BoardResponse deleteList(@PathVariable UUID id) {
+        return boardService.deleteList(id);
+    }
+
+    /**
      * タスクの追加（F-06）。仕様は docs/design/api.md 3.6。
      *
      * <p>返すのは処理後のボード全体（api.md 2.7）。画面側は応答を待たずに描いたうえで、

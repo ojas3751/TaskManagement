@@ -113,6 +113,20 @@ export async function updateList(id: string, input: { title: string }): Promise<
 }
 
 /**
+ * リストを、中のタスクごと削除する（F-04）。仕様は docs/design/api.md 3.4。
+ *
+ * 返るのはボード全体。削除で変わるのは対象のリストだけではなく、後続のリストの
+ * position も詰まるため。
+ */
+export async function deleteList(id: string): Promise<Board> {
+  const res = await apiFetch(`/api/lists/${id}`, { method: 'DELETE' })
+
+  if (!res.ok) throw await toApiError(res, 'リストを削除できませんでした')
+
+  return (await res.json()) as Board
+}
+
+/**
  * タスクをリストの先頭に追加する（F-06）。仕様は docs/design/api.md 3.6。
  *
  * id は呼び出し側が採番して渡す。サーバーの応答を待たずに画面へ描くため、

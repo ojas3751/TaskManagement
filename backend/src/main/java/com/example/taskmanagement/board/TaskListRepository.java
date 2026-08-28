@@ -1,5 +1,6 @@
 package com.example.taskmanagement.board;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -49,4 +50,16 @@ public interface TaskListRepository extends JpaRepository<TaskList, UUID> {
             where l.board.id = :boardId and l.position >= :position
             """)
     void shiftPositionsDown(@Param("boardId") UUID boardId, @Param("position") int position);
+
+    /** ボード内のリストを並び順で取得する。削除後に詰め直すとき、残りの顔ぶれを知るために使う。 */
+    List<TaskList> findByBoardIdOrderByPositionAsc(UUID boardId);
+
+    /**
+     * リストの位置を置く（F-04 の詰め直し、F-05 の並び替え）。
+     *
+     * <p>一括 UPDATE の注意点は {@link #shiftPositionsDown} と同じ。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update TaskList l set l.position = :position where l.id = :id")
+    void placeList(@Param("id") UUID id, @Param("position") int position);
 }

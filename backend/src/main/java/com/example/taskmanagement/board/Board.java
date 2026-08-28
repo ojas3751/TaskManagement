@@ -62,6 +62,22 @@ public class Board {
         this.title = title;
     }
 
+    /**
+     * リストをこのボードから外す（F-04）。
+     *
+     * <p><strong>削除はこの経路で行う。</strong>理由は {@link TaskList#removeCard} と同じで、
+     * lists には {@link CascadeType#ALL} が付いているため、{@code delete(list)} を呼んでも
+     * <strong>コレクションに残っている限り flush で PERSIST がカスケードし、削除の予約が
+     * 取り消される。</strong>実際、統合テストで DELETE が発行されずに露出した（手動の確認では、
+     * リクエストごとにボードを読み込む前だったため気づけなかった）。
+     *
+     * <p>コレクションから外せば {@code orphanRemoval = true} が DELETE を出す。中のタスクも
+     * lists.cards のカスケードと DB 側の ON DELETE CASCADE で一緒に消える。
+     */
+    public void removeList(TaskList list) {
+        lists.remove(list);
+    }
+
     public UUID getId() {
         return id;
     }

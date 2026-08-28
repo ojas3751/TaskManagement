@@ -5,7 +5,7 @@ import { TaskCard } from './TaskCard'
 
 type Props = {
   list: TaskList
-  onRenameList: (listId: string, title: string) => void
+  onOpenList: (listId: string) => void
   onAddCard: (listId: string, title: string) => void
   onOpenCard: (cardId: string) => void
   onDeleteCard: (cardId: string) => void
@@ -44,10 +44,10 @@ function PencilIcon() {
  * 列の並び替え・削除（Step 9）、完了列のチェックボックスと
  * 折りたたみ（Step 10）はまだ置かない。
  */
-export function ListColumn({ list, onRenameList, onAddCard, onOpenCard, onDeleteCard }: Props) {
-  // 開閉は列ごとに独立していて他と共有する必要がないので、ここで持つ
+export function ListColumn({ list, onOpenList, onAddCard, onOpenCard, onDeleteCard }: Props) {
+  // 開閉は列ごとに独立していて他と共有する必要がないので、ここで持つ。
+  // リストの詳細モーダルは App が持つ（削除の確認モーダルへ続くため）
   const [isAdding, setIsAdding] = useState(false)
-  const [isRenaming, setIsRenaming] = useState(false)
 
   const cards = [...list.cards].sort((a, b) => a.position - b.position)
 
@@ -73,8 +73,8 @@ export function ListColumn({ list, onRenameList, onAddCard, onOpenCard, onDelete
         {!list.is_default && (
           <button
             type="button"
-            onClick={() => setIsRenaming(true)}
-            aria-label={`「${list.title}」の名前を変更`}
+            onClick={() => onOpenList(list.id)}
+            aria-label={`「${list.title}」の詳細`}
             // ボタンなので Tab でフォーカスでき、Enter / Space でも開く（要件 6.6）。
             // ダブルクリックだけにしないのはこのため
             className="flex h-5 shrink-0 cursor-pointer items-center border-0 bg-transparent p-0 text-ink-sub hover:text-ink"
@@ -133,22 +133,6 @@ export function ListColumn({ list, onRenameList, onAddCard, onOpenCard, onDelete
             />
           ))}
         </div>
-      )}
-
-      {isRenaming && (
-        <NameInputModal
-          title="リスト名の変更"
-          label="リスト名"
-          maxLength={50}
-          submitLabel="保存"
-          // 現在の名前を入れた状態で開く（F-03）。付け直しではなく手直しになる
-          initialValue={list.title}
-          onSubmit={(title) => {
-            setIsRenaming(false)
-            onRenameList(list.id, title)
-          }}
-          onCancel={() => setIsRenaming(false)}
-        />
       )}
 
       {isAdding && (
