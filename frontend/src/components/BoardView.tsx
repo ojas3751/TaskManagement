@@ -6,7 +6,7 @@ import { NameInputModal } from './NameInputModal'
 type Props = {
   board: Board
   onAddList: (title: string) => void
-  onRenameList: (listId: string, title: string) => void
+  onOpenList: (listId: string) => void
   onAddCard: (listId: string, title: string) => void
   onOpenCard: (cardId: string) => void
   onDeleteCard: (cardId: string) => void
@@ -21,7 +21,7 @@ type Props = {
 export function BoardView({
   board,
   onAddList,
-  onRenameList,
+  onOpenList,
   onAddCard,
   onOpenCard,
   onDeleteCard,
@@ -37,7 +37,7 @@ export function BoardView({
         <ListColumn
           key={list.id}
           list={list}
-          onRenameList={onRenameList}
+          onOpenList={onOpenList}
           onAddCard={onAddCard}
           onOpenCard={onOpenCard}
           onDeleteCard={onDeleteCard}

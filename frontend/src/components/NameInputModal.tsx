@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { NameField } from './NameField'
 
 type Props = {
   /** 見出し。「タスクの追加」「リストの追加」など */
@@ -53,7 +54,6 @@ export function NameInputModal({
   }, [])
 
   const isEmpty = value.trim() === ''
-  const isAtLimit = value.length >= maxLength
 
   const submit = () => {
     setSubmitted(true)
@@ -98,31 +98,15 @@ export function NameInputModal({
         </div>
 
         <div className="px-4 py-3">
-          <label htmlFor="name-input-modal-field" className="block">
-            {label}
-          </label>
-          <input
+          <NameField
             id="name-input-modal-field"
-            ref={inputRef}
-            type="text"
+            label={label}
             value={value}
-            // 上限は maxLength 属性だけに任せず onChange でも切る。属性はキー入力を
-            // 止めてくれるが、貼り付けは拒否せず上限までで切り詰める仕様（E-02）なので、
-            // 実際に値を組み立てるここで揃えておく
+            onChange={setValue}
             maxLength={maxLength}
-            onChange={(e) => setValue(e.target.value.slice(0, maxLength))}
-            className="mt-1 w-full rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+            showEmptyError={submitted}
+            inputRef={inputRef}
           />
-
-          <div className="mt-1 flex items-start justify-between gap-3">
-            <p className="m-0 text-danger" role="alert">
-              {submitted && isEmpty ? '入力してください。' : ''}
-            </p>
-            {/* 文字数カウンタ（E-01）。上限に達したら赤にする */}
-            <p className={`m-0 shrink-0 ${isAtLimit ? 'text-danger' : 'text-ink-sub'}`}>
-              {value.length}/{maxLength}
-            </p>
-          </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t border-line px-4 py-3">
