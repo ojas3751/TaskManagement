@@ -57,6 +57,20 @@ public class BoardController {
     }
 
     /**
+     * リストの並び替え（F-05）。仕様は docs/design/api.md 3.5。
+     *
+     * <p>パスに ID を含めず /api/lists/reorder としているのは、この操作が 1 つのリストではなく
+     * <strong>ボード全体の並び</strong>を書き換えるため（/api/cards/move と同じ考え方）。
+     *
+     * <p>この宣言が /api/lists/{id} より前にある必要はない。Spring はリテラルのパスを
+     * 変数を含むパスより優先する。
+     */
+    @PatchMapping("/api/lists/reorder")
+    public BoardResponse reorderLists(@Valid @RequestBody ReorderListsRequest request) {
+        return boardService.reorderLists(request);
+    }
+
+    /**
      * リストの削除（F-04）。仕様は docs/design/api.md 3.4。
      *
      * <p>中のタスクも一緒に消える。204 ではなくボード全体を返すのは、削除で変わるのが

@@ -5,6 +5,8 @@ import com.example.taskmanagement.board.CardIdsMismatchException;
 import com.example.taskmanagement.board.CardLimitExceededException;
 import com.example.taskmanagement.board.CardNotFoundException;
 import com.example.taskmanagement.board.DueTimeWithoutDueDateException;
+import com.example.taskmanagement.board.FixedLastMustBeLastException;
+import com.example.taskmanagement.board.ListIdsMismatchException;
 import com.example.taskmanagement.board.ListLimitExceededException;
 import com.example.taskmanagement.board.ListNotFoundException;
 import com.example.taskmanagement.board.ListProtectedException;
@@ -122,6 +124,29 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleListLimitExceeded(ListLimitExceededException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiErrorResponse.of("LIST_LIMIT_EXCEEDED", "追加できるリストは10件までです"));
+    }
+
+    /**
+     * 送られてきたリストの並びが今の顔ぶれと一致しない（docs/design/api.md 3.5）。
+     *
+     * <p>タスク側（CARD_IDS_MISMATCH）と同じく、画面が古いときに起きるため再読み込みを促す。
+     */
+    @ExceptionHandler(ListIdsMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handleListIdsMismatch(ListIdsMismatchException e) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of("LIST_IDS_MISMATCH", "表示が最新ではありません。再読み込みしてください"));
+    }
+
+    /**
+     * 「完了」列が末尾に無い並びを受け取った（docs/design/api.md 3.5）。
+     *
+     * <p>再読み込みでは直らないので、理由を伝える。画面側でも端のボタンを押せなくしているが、
+     * API 単独で呼ばれても守る。
+     */
+    @ExceptionHandler(FixedLastMustBeLastException.class)
+    public ResponseEntity<ApiErrorResponse> handleFixedLastMustBeLast(FixedLastMustBeLastException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("FIXED_LAST_MUST_BE_LAST", "「完了」は常にいちばん右になります"));
     }
 
     @ExceptionHandler(CardLimitExceededException.class)
