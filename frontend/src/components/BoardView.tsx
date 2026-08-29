@@ -11,6 +11,7 @@ type Props = {
   onAddCard: (listId: string, title: string) => void
   onOpenCard: (cardId: string) => void
   onDeleteCard: (cardId: string) => void
+  onBulkDeleteCards: (cardIds: string[]) => void
 }
 
 /**
@@ -32,6 +33,7 @@ export function BoardView({
   onAddCard,
   onOpenCard,
   onDeleteCard,
+  onBulkDeleteCards,
 }: Props) {
   // 開閉はこの画面だけの状態なのでここで持つ（ListColumn の [+ タスク追加] と同じ）
   const [isAdding, setIsAdding] = useState(false)
@@ -56,6 +58,7 @@ export function BoardView({
           onAddCard={onAddCard}
           onOpenCard={onOpenCard}
           onDeleteCard={onDeleteCard}
+          onBulkDeleteCards={onBulkDeleteCards}
         />
       ))}
 
@@ -65,7 +68,8 @@ export function BoardView({
       <button
         type="button"
         onClick={() => setIsAdding(true)}
-        className="w-65 shrink-0 cursor-pointer rounded-card border border-dashed border-ink-sub bg-list-bg px-2 py-2 text-left text-ink-sub hover:text-ink"
+        // 幅は列に合わせる（ListColumn の w-75 と同じ値にすること）
+        className="w-75 shrink-0 cursor-pointer rounded-card border border-dashed border-ink-sub bg-list-bg px-2 py-2 text-left text-ink-sub hover:text-ink"
       >
         ＋ リスト追加
       </button>

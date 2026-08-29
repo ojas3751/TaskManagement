@@ -96,7 +96,10 @@ export function TaskCard({ card, isDone, onOpen, onDelete }: Props) {
   const style = isDone ? CARD_STYLES.done : CARD_STYLES[dueStatus(card)]
 
   return (
-    <article className={`rounded-card ${style.card}`}>
+    // 幅は 240px 固定で、列の中では中央に置く（F-15）。列の内側 280px との差 40px が
+    // 左右 20px ずつの余白になり、完了列でチェックボックスを出すときの寄り代になる。
+    // **全列で同じ幅**にしてあるので、完了列だけカードの大きさが変わることはない
+    <article className={`mx-auto w-60 rounded-card ${style.card}`}>
       {/* クリックできるのはタイトル部分（画面設計 4章）。カード全体をボタンにすると、
           期限の行に置く削除アイコン（F-08, #26）がボタンの入れ子になってしまう */}
       <h3 className="m-0 font-semibold">

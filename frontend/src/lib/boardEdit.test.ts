@@ -6,6 +6,7 @@ import {
   withRenamedList,
   withUpdatedCard,
   withoutCard,
+  withoutCards,
   withoutList,
 } from './boardEdit'
 
@@ -272,5 +273,42 @@ describe('withoutCard', () => {
     withoutCard(board, 'a')
 
     expect(board.lists[0].cards.map((c) => c.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('withoutCards', () => {
+  it('複数のリストにまたがっていてもまとめて取り除く', () => {
+    const next = withoutCards(board, ['a', 'c'])
+
+    expect(next.lists[0].cards.map((c) => c.id)).toEqual(['b'])
+    expect(next.lists[1].cards).toEqual([])
+  })
+
+  it('残ったタスクの position は詰め直さない', () => {
+    // withoutCard と同じ理由。正しい連番は応答で入る
+    const next = withoutCards(board, ['a'])
+
+    expect(next.lists[0].cards.map((c) => c.position)).toEqual([1])
+  })
+
+  it('存在しない id が混ざっていても、在るものだけ取り除く', () => {
+    // 画面側で弾く必要はない。サーバーは1件でも見つからなければ1件も削除せず
+    // 404 を返すので、その場合は呼び出し側が盤面ごと巻き戻す
+    const next = withoutCards(board, ['a', 'nowhere'])
+
+    expect(next.lists[0].cards.map((c) => c.id)).toEqual(['b'])
+  })
+
+  it('空の配列では何も変わらない', () => {
+    const next = withoutCards(board, [])
+
+    expect(next.lists.map((l) => l.cards.map((c) => c.id))).toEqual([['a', 'b'], ['c'], []])
+  })
+
+  it('元の board は変更しない', () => {
+    withoutCards(board, ['a', 'c'])
+
+    expect(board.lists[0].cards.map((c) => c.id)).toEqual(['a', 'b'])
+    expect(board.lists[1].cards.map((c) => c.id)).toEqual(['c'])
   })
 })
