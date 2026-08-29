@@ -525,8 +525,24 @@ export default function App() {
   const deletingList = deletingListId ? findList(deletingListId) : undefined
 
   return (
-    <>
-      <header className="border-b border-line bg-surface px-5 py-3">
+    /**
+     * 画面の高さに固定し、盤面に残りを渡す（F-25）。
+     *
+     * **ページ全体が縦にスクロールすると、ボード名もリスト名も一緒に流れて隠れる。**
+     * 列が多いボードでは、どの列に入れようとしているかが分からなくなる。
+     * スクロールする範囲を各列のタスク一覧だけに絞れば、見出しは常に見えたままになる。
+     *
+     * **列の高さを calc(100vh - 固定値) で決めない。** ヘッダーの余白を変えた瞬間に
+     * 静かにずれるうえ、下のエラー表示と待機表示は**出入りする**ので、引くべき値が
+     * そもそも一定でない。縦 flex にして残りを渡せば、説明の要る数字が残らない。
+     *
+     * dvh ではなく vh でよい。dvh はモバイルのブラウザ UI が伸び縮みする対策で、
+     * スマートフォン対応は対象外（要件定義書 5.5）。
+     */
+    <div className="flex h-screen flex-col">
+      {/* 以下 3 つは shrink-0。付けないと、空きが足りないときに一緒に縮む。
+          縮んでよいのは盤面（main）だけ */}
+      <header className="shrink-0 border-b border-line bg-surface px-5 py-3">
         <h1 className="m-0 text-lg font-bold">
           {state.status === 'ready' ? state.board.title : 'マイタスク'}
         </h1>
@@ -535,7 +551,7 @@ export default function App() {
       {actionError && (
         <div
           role="alert"
-          className="mx-5 mt-4 flex items-start justify-between gap-3 rounded-card border border-danger bg-surface px-3 py-2"
+          className="mx-5 mt-4 flex shrink-0 items-start justify-between gap-3 rounded-card border border-danger bg-surface px-3 py-2"
         >
           <p className="m-0 text-danger">{actionError}</p>
           <button
@@ -553,7 +569,7 @@ export default function App() {
       {waitPhase !== 'idle' && (
         <div
           role="status"
-          className="mx-5 mt-4 flex items-center gap-2 rounded-card border border-line bg-surface px-3 py-2"
+          className="mx-5 mt-4 flex shrink-0 items-center gap-2 rounded-card border border-line bg-surface px-3 py-2"
         >
           <span
             aria-hidden="true"
@@ -568,13 +584,23 @@ export default function App() {
         </div>
       )}
 
-      {state.status === 'loading' && (
-        <p className="px-5 py-10 text-center text-ink-sub">読み込み中…</p>
-      )}
-      {state.status === 'error' && (
-        <LoadError title={state.title} detail={state.detail} onRetry={load} />
-      )}
-      {state.status === 'ready' && (
+      {/**
+       * 可変の領域（F-25）。上の3つが取った残りを、この main が全部受け取る。
+       *
+       * **min-h-0 が要る。** flex の子は既定で min-height: auto となり中身より
+       * 小さくならないため、これが無いと縮まずに画面からはみ出す。
+       *
+       * 3つの状態を1つに束ねているのは、**可変領域を1箇所にするため。** 並列に
+       * 置くと、状態ごとに flex-1 を配ることになり、高さの出所が3つに増える
+       */}
+      <main className="min-h-0 flex-1">
+        {state.status === 'loading' && (
+          <p className="px-5 py-10 text-center text-ink-sub">読み込み中…</p>
+        )}
+        {state.status === 'error' && (
+          <LoadError title={state.title} detail={state.detail} onRetry={load} />
+        )}
+        {state.status === 'ready' && (
         /**
          * 応答待ちの間は盤面を触れなくする（#43, #44）。
          *
@@ -587,18 +613,23 @@ export default function App() {
          * 薄くするのは waitPhase が動いてから。ロックと同時に薄くすると、正常時
          * （10ms 前後）に一瞬だけ暗くなってチラつく
          */
-        <div inert={isBusy} className={waitPhase === 'idle' ? undefined : 'opacity-60'}>
-          <BoardView
-            board={state.board}
-            onAddList={handleAddList}
-            onOpenList={setOpenListId}
-            onMoveList={handleMoveList}
-            onAddCard={handleAddCard}
-            onOpenCard={setOpenCardId}
-            onDeleteCard={setDeletingCardId}
-          />
-        </div>
-      )}
+          <div
+            inert={isBusy}
+            // h-full で、main から受け取った高さをそのまま盤面へ渡す（F-25）
+            className={`h-full ${waitPhase === 'idle' ? '' : 'opacity-60'}`}
+          >
+            <BoardView
+              board={state.board}
+              onAddList={handleAddList}
+              onOpenList={setOpenListId}
+              onMoveList={handleMoveList}
+              onAddCard={handleAddCard}
+              onOpenCard={setOpenCardId}
+              onDeleteCard={setDeletingCardId}
+            />
+          </div>
+        )}
+      </main>
 
       {openCard && openCardList && state.status === 'ready' && (
         <CardDetailModal
@@ -649,6 +680,6 @@ export default function App() {
           onCancel={() => setDeletingCardId(null)}
         />
       )}
-    </>
+    </div>
   )
 }

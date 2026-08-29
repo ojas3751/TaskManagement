@@ -18,6 +18,11 @@ type Props = {
  *
  * 列が増えると横幅に収まらなくなるので、はみ出した分は横スクロールで見せる。
  * 列を縮めて詰め込むと 1 列あたりのタスクが読めなくなるため。
+ *
+ * **縦は自分ではスクロールしない（F-25）。** 縦を担うのは各列であって盤面ではない。
+ * これは指定しないと成立しない。CSS では **overflow-x に auto を与えると、
+ * overflow-y の visible が auto に格上げされる**ため、黙っていると盤面自身も縦の
+ * スクロール領域になる。
  */
 export function BoardView({
   board,
@@ -34,7 +39,8 @@ export function BoardView({
   const lists = [...board.lists].sort((a, b) => a.position - b.position)
 
   return (
-    <div className="flex items-start gap-3 overflow-x-auto px-5 pb-8 pt-4">
+    // items-start は残す。列を中身なりの高さに保つため（ListColumn の max-h-full 参照）
+    <div className="flex h-full items-start gap-3 overflow-x-auto overflow-y-hidden px-5 pb-8 pt-4">
       {lists.map((list, index) => (
         <ListColumn
           key={list.id}
