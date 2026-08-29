@@ -340,6 +340,66 @@ public class BoardService {
     }
 
     /**
+     * 選択したタスクをまとめて削除する（F-15）。仕様は docs/design/api.md 3.10。
+     *
+     * <p>deleteCard を複数件に広げたもの。削除の作法（コレクションから外す → flush）は
+     * そちらと同じで、違うのは<strong>詰め直し方</strong>だけ。
+     *
+     * <p><strong>shiftPositionsUp ではなく renumber を使う。</strong>shiftPositionsUp は
+     * 「ある位置より後ろを 1 つ前へ」であり、1 件抜けた穴を塞ぐためのもの。複数件が同時に
+     * 抜けると、抜けた数だけ詰める必要があり、位置ごとに詰め幅が変わる。並び順のまま
+     * 0 から振り直す renumber なら、何件抜けても正しい連番になる。
+     *
+     * <p><strong>存在しない ID が 1 つでもあれば、1 件も削除せずに 404 にする。</strong>
+     * 「消せたものだけ消す」と、画面に出ていた選択と実際に消えたものがズレたまま処理が
+     * 終わる（api.md 3.10 の注記）。まとめて失敗させ、再読み込みさせる方が状態を追いやすい。
+     *
+     * @throws CardIdsRequiredException 削除対象が 1 件も指定されなかったとき
+     * @throws CardNotFoundException    指定された ID のいずれかが存在しないとき
+     */
+    @Transactional
+    public BoardResponse bulkDeleteCards(BulkDeleteCardsRequest request) {
+        // 同じ ID が 2 回入っていても 1 件として扱う。画面がそう送ることは無いが、
+        // 送られても件数の突き合わせが狂わないようにする
+        Set<UUID> cardIds = request.cardIds() == null
+                ? Set.of()
+                : new HashSet<>(request.cardIds());
+
+        if (cardIds.isEmpty()) {
+            throw new CardIdsRequiredException();
+        }
+
+        List<Card> cards = cardRepository.findAllById(cardIds);
+
+        // 引けた件数が足りない＝存在しない ID が混ざっている
+        if (cards.size() != cardIds.size()) {
+            throw new CardNotFoundException();
+        }
+
+        // 詰め直す対象を、削除する前に控えておく（deleteCard が position を先に取るのと同じ）。
+        // 外した後では card.getList() から辿れなくなる
+        Set<UUID> affectedListIds = cards.stream()
+                .map(card -> card.getList().getId())
+                .collect(Collectors.toCollection(HashSet::new));
+
+        // EntityManager.remove を直接呼ばず、リストから外して orphanRemoval に消させる。
+        // 理由は TaskList.removeCard の Javadoc を参照（cascade = ALL が削除を打ち消す）
+        for (Card card : cards) {
+            card.getList().removeCard(card);
+        }
+
+        // 削除を予約しただけでは DELETE が飛んでいない。renumber の一括 UPDATE は
+        // 永続化コンテキストを迂回するため、先に書き出す（deleteCard と同じ）
+        cardRepository.flush();
+
+        for (UUID listId : affectedListIds) {
+            renumber(listId);
+        }
+
+        return loadBoard();
+    }
+
+    /**
      * タスクを移動する（F-13, F-23）。仕様は docs/design/api.md 3.9。
      *
      * <p>移動先の並びは受け取ったとおりに振り直し、移動元は残ったタスクを詰めて振り直す。
