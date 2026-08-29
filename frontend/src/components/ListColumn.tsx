@@ -91,8 +91,12 @@ function ArrowButton({
 /**
  * 列（画面設計 1章）。
  *
- * この段階では並び替えの矢印・見出し・[+ タスク追加]・タスクの一覧を出す。
- * 完了列のチェックボックスと折りたたみ（Step 10）はまだ置かない。
+ * 並び替えの矢印・見出し・[+ タスク追加]・タスクの一覧を出す。
+ * 完了列のチェックボックス（F-15）はまだ置かない。
+ *
+ * **スクロールするのはタスクの一覧だけ（F-25）。** 矢印・リスト名・[+ タスク追加] は
+ * その外に置くので、どれだけスクロールしても隠れない。**これが F-25 の目的そのもの**で、
+ * 見出しが流れて消えると、列が多いときにどの列を触っているか分からなくなる。
  */
 export function ListColumn({
   list,
@@ -111,7 +115,9 @@ export function ListColumn({
   const cards = [...list.cards].sort((a, b) => a.position - b.position)
 
   return (
-    <section className="flex w-65 shrink-0 flex-col gap-2 self-start rounded-card bg-list-bg p-2.5">
+    // max-h-full で、盤面から渡された高さを上限として受け取る（F-25）。
+    // self-start と併せて「収まるうちは中身なりの高さ、超えたらそこで頭打ち」になる
+    <section className="flex max-h-full w-65 shrink-0 flex-col gap-2 self-start rounded-card bg-list-bg p-2.5">
       {/* 並び替えの行（F-05）。リスト名の**上**に置き、両端に寄せる。
 
           見出しの行（リスト名の横）に入れないのは、**260px しかない列幅をリスト名と
@@ -203,11 +209,23 @@ export function ListColumn({
         ＋ タスク追加
       </button>
 
-      {cards.length === 0 ? (
-        <p className="m-0 py-4 text-center text-ink-sub">（タスクなし）</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {cards.map((card) => (
+      {/* ここだけがスクロールする（F-25）。
+
+          **min-h-0 が要る。** flex の子は既定で min-height: auto となり中身より
+          小さくならないため、これが無いと縮まずに列が上限を突き抜ける。
+
+          **flex-1 は付けない。** 付けると中身が少ない列まで画面の下端まで伸び、
+          いまの見た目が変わる。min-h-0 だけなら、収まるうちは中身なりの高さで、
+          上限に達したときだけ縮んでスクロールする。F-25 が求めているのは
+          「はみ出さないこと」だけなので、それ以外は動かさない。
+
+          空状態も同じ入れ物に入れる。ドロップの受け口（F-13）としては
+          タスクがある場合と同じ扱いになるため */}
+      <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
+        {cards.length === 0 ? (
+          <p className="m-0 py-4 text-center text-ink-sub">（タスクなし）</p>
+        ) : (
+          cards.map((card) => (
             <TaskCard
               key={card.id}
               card={card}
@@ -217,9 +235,9 @@ export function ListColumn({
               onOpen={onOpenCard}
               onDelete={onDeleteCard}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       {isAdding && (
         <NameInputModal

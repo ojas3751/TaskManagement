@@ -9,10 +9,14 @@ type Props = {
  *
  * ボードが1つも出せない状態なので、部分的なメッセージではなく
  * 画面全体をこれに置き換える。
+ *
+ * **高さは min-h-[60vh] ではなく h-full（F-25）。** 可変領域の中で 60vh を要求すると、
+ * ウィンドウが低いときにヘッダーとの合計が画面を超え、**ページ全体のスクロールが
+ * 復活する。** F-25 が消そうとしている現象そのものなので、ここも親から受け取る。
  */
 export function LoadError({ title, detail, onRetry }: Props) {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center px-5 py-10">
+    <div className="flex h-full items-center justify-center px-5 py-10">
       <div className="text-center">
         <p className="m-0 text-5xl text-danger" aria-hidden="true">
           ⚠
