@@ -113,6 +113,24 @@ export async function updateList(id: string, input: { title: string }): Promise<
 }
 
 /**
+ * リストを並び替える（F-05）。仕様は docs/design/api.md 3.5。
+ *
+ * list_ids は**変更後の並び順すべて**。配列の添字がそのまま position になる。
+ * 完了列が末尾に無い並びは 409（FIXED_LAST_MUST_BE_LAST）で断られる。
+ */
+export async function reorderLists(input: { list_ids: string[] }): Promise<Board> {
+  const res = await apiFetch('/api/lists/reorder', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+
+  if (!res.ok) throw await toApiError(res, 'リストを並び替えできませんでした')
+
+  return (await res.json()) as Board
+}
+
+/**
  * リストを、中のタスクごと削除する（F-04）。仕様は docs/design/api.md 3.4。
  *
  * 返るのはボード全体。削除で変わるのは対象のリストだけではなく、後続のリストの

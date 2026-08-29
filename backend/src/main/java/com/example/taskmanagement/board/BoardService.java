@@ -181,6 +181,57 @@ public class BoardService {
     }
 
     /**
+     * リストを並び替える（F-05）。仕様は docs/design/api.md 3.5。
+     *
+     * <p>変更後の並び順すべてを受け取り、配列の添字をそのまま position にする。1 件だけ
+     * 「これをここへ動かす」と受け取る形にしないのは、<strong>「完了列が最右か」を末尾の
+     * 要素だけ見て判定できる</strong>ため。移動元・移動先を個別に検査せずに済む。
+     *
+     * <p>受け取った配列をそのまま信じないのは moveCard と同じ理由。画面の情報が古いと、
+     * position を振られないリストが残る。
+     *
+     * @throws ListNotFoundException          完了列が見つからないとき。seed で必ず存在する前提
+     * @throws ListIdsMismatchException       送られてきた並びが今の顔ぶれと一致しないとき
+     * @throws FixedLastMustBeLastException   完了列が末尾に無いとき
+     */
+    @Transactional
+    public BoardResponse reorderLists(ReorderListsRequest request) {
+        TaskList fixedLast = taskListRepository.findByIsFixedLastTrue()
+                .orElseThrow(ListNotFoundException::new);
+
+        UUID boardId = fixedLast.getBoard().getId();
+        List<UUID> given = request.listIds();
+
+        verifyListOrder(boardId, given);
+
+        // 完了列は常に最右（api.md 2.3）。並び順を丸ごと受け取っているので、
+        // 末尾を見るだけで「完了自身が動いた」も「他の列が完了より右へ来た」も同時に弾ける
+        if (!given.get(given.size() - 1).equals(fixedLast.getId())) {
+            throw new FixedLastMustBeLastException();
+        }
+
+        for (int position = 0; position < given.size(); position++) {
+            taskListRepository.placeList(given.get(position), position);
+        }
+
+        return loadBoard();
+    }
+
+    /** 送られてきた並びが、いまのボードのリストの顔ぶれと過不足なく一致するか確かめる。 */
+    private void verifyListOrder(UUID boardId, List<UUID> given) {
+        Set<UUID> expected = taskListRepository.findByBoardIdOrderByPositionAsc(boardId).stream()
+                .map(TaskList::getId)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        Set<UUID> unique = new HashSet<>(given);
+
+        // 件数も見るのは、同じ ID が 2 回入っていても集合にすると 1 件に潰れてしまうため
+        if (unique.size() != given.size() || !unique.equals(expected)) {
+            throw new ListIdsMismatchException();
+        }
+    }
+
+    /**
      * タスクをリストの先頭に追加する（F-06）。仕様は docs/design/api.md 3.6。
      *
      * <p>既存タスクの position を一括で +1 してから、新規に 0 を振る。この 2 つは

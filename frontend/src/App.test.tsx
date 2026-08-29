@@ -8,6 +8,7 @@ import {
   deleteCard,
   deleteList,
   fetchBoard,
+  reorderLists,
   updateList,
 } from './api/board'
 import type { Board, Card } from './api/types'
@@ -24,6 +25,7 @@ vi.mock('./api/board', async (importOriginal) => {
     createList: vi.fn(),
     updateList: vi.fn(),
     deleteList: vi.fn(),
+    reorderLists: vi.fn(),
     createCard: vi.fn(),
     updateCard: vi.fn(),
     moveCard: vi.fn(),
@@ -322,6 +324,54 @@ describe('リストの削除（F-04）', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('データベースに接続できません。')
     expect(listTitles()).toEqual(['TODO', '設計', '完了'])
     expect(screen.getByText('調査する')).toBeInTheDocument()
+  })
+})
+
+describe('リストの並び替え（F-05）', () => {
+  it('完了列には矢印を出さないが、他の列には出す', async () => {
+    await renderBoard(boardWithAddedList)
+
+    expect(screen.getByRole('button', { name: '「TODO」を右へ移動' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '「設計」を左へ移動' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /「完了」を/ })).not.toBeInTheDocument()
+  })
+
+  it('左端の左と、完了の左隣の右は押せない', async () => {
+    await renderBoard(boardWithAddedList)
+
+    // 端では消さずに残す。消すと列によってボタンの数が変わり、見出しの位置がずれる
+    expect(screen.getByRole('button', { name: '「TODO」を左へ移動' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '「TODO」を右へ移動' })).toBeEnabled()
+    // 「設計」の右隣は完了。完了より右へは行けない
+    expect(screen.getByRole('button', { name: '「設計」を右へ移動' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '「設計」を左へ移動' })).toBeEnabled()
+  })
+
+  it('応答を待たずに並びが入れ替わる', async () => {
+    await renderBoard(boardWithAddedList)
+    const pending = deferred<Board>()
+    vi.mocked(reorderLists).mockReturnValue(pending.promise)
+
+    fireEvent.click(screen.getByRole('button', { name: '「設計」を左へ移動' }))
+
+    expect(listTitles()).toEqual(['設計', 'TODO', '完了'])
+    // 変更後の並び順すべてを送る。添字がそのまま position になる
+    expect(reorderLists).toHaveBeenCalledWith({ list_ids: ['design', 'todo', 'done'] })
+
+    await act(async () => {
+      pending.resolve(boardWithAddedList)
+    })
+  })
+
+  it('並び替えに失敗したら、元の並びに戻る', async () => {
+    await renderBoard(boardWithAddedList)
+    vi.mocked(reorderLists).mockRejectedValue(dbDown)
+
+    fireEvent.click(screen.getByRole('button', { name: '「TODO」を右へ移動' }))
+    expect(listTitles()).toEqual(['設計', 'TODO', '完了'])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('データベースに接続できません。')
+    expect(listTitles()).toEqual(['TODO', '設計', '完了'])
   })
 })
 

@@ -7,6 +7,7 @@ import {
   deleteList,
   fetchBoard,
   moveCard,
+  reorderLists,
   updateCard,
   updateList,
 } from './api/board'
@@ -20,6 +21,7 @@ import {
   withoutList,
 } from './lib/boardEdit'
 import { toCardIdsForAppend, withMovedCard } from './lib/moveCard'
+import { withListOrder, withSwappedList } from './lib/reorderLists'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
 import { ConfirmModal } from './components/ConfirmModal'
@@ -245,6 +247,39 @@ export default function App() {
                 ? { status: 'ready', board: withRenamedList(prev.board, listId, before) }
                 : prev,
             )
+          },
+        )
+        .finally(() => setPending((n) => n - 1))
+    },
+    [state, isBusy],
+  )
+
+  /**
+   * リストを隣と入れ替える（F-05）。
+   *
+   * 失敗したときは並び替える前の盤面へ戻す。**position は 2 つの列にまたがって変わる**ので、
+   * 1 つの値ではなく盤面ごと控える。
+   *
+   * 「完了より右へ行けない」は画面ではボタンを出さないことで表し、判断の正本はサーバー
+   * （409 FIXED_LAST_MUST_BE_LAST）に置く。
+   */
+  const handleMoveList = useCallback(
+    (listId: string, direction: -1 | 1) => {
+      if (state.status !== 'ready' || isBusy) return
+
+      const before = state.board
+      const listIds = withSwappedList(before, listId, direction)
+
+      setActionError(null)
+      setState({ status: 'ready', board: withListOrder(before, listIds) })
+
+      setPending((n) => n + 1)
+      reorderLists({ list_ids: listIds })
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+            setState({ status: 'ready', board: before })
           },
         )
         .finally(() => setPending((n) => n - 1))
@@ -557,6 +592,7 @@ export default function App() {
             board={state.board}
             onAddList={handleAddList}
             onOpenList={setOpenListId}
+            onMoveList={handleMoveList}
             onAddCard={handleAddCard}
             onOpenCard={setOpenCardId}
             onDeleteCard={setDeletingCardId}

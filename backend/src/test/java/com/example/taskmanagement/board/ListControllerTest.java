@@ -10,7 +10,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.example.taskmanagement.support.IntegrationTest;
+import java.util.Arrays;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -18,7 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
 
 /**
- * リストの API の振る舞い（docs/design/api.md 3.2, 3.3, 3.4）。
+ * リストの API の振る舞い（docs/design/api.md 3.2〜3.5）。
  *
  * <p>タスク側は {@link BoardControllerTest} が持つ。同じコントローラだが、確かめている
  * 対象が別なのでファイルを分ける。
@@ -211,6 +213,80 @@ class ListControllerTest {
         mockMvc.perform(delete("/api/lists/{id}", UUID.randomUUID()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("LIST_NOT_FOUND"));
+    }
+
+    @Test
+    void 並び替えると受け取った順に振り直される() throws Exception {
+        mockMvc.perform(reorderLists(DOING_LIST_ID, TODO_LIST_ID, DONE_LIST_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[0].title").value("進行中"))
+                .andExpect(jsonPath("$.lists[0].position").value(0))
+                .andExpect(jsonPath("$.lists[1].title").value("TODO"))
+                .andExpect(jsonPath("$.lists[1].position").value(1))
+                .andExpect(jsonPath("$.lists[2].title").value("完了"))
+                .andExpect(jsonPath("$.lists[2].position").value(2));
+    }
+
+    @Test
+    void 追加したリストも並び替えの対象になる() throws Exception {
+        UUID added = UUID.randomUUID();
+        mockMvc.perform(postList(added, "設計")).andExpect(status().isCreated());
+
+        // 追加直後は 3 番目（完了の左隣）。これを先頭へ動かす
+        mockMvc.perform(reorderLists(added.toString(), TODO_LIST_ID, DOING_LIST_ID, DONE_LIST_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[0].title").value("設計"))
+                .andExpect(jsonPath("$.lists[0].position").value(0));
+    }
+
+    @Test
+    void 完了列を末尾から動かすと409を返す() throws Exception {
+        mockMvc.perform(reorderLists(DONE_LIST_ID, TODO_LIST_ID, DOING_LIST_ID))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("FIXED_LAST_MUST_BE_LAST"));
+    }
+
+    @Test
+    void 他のリストを完了より右へ動かすと409を返す() throws Exception {
+        // 「完了が末尾に無い」という同じ状態なので、完了自身を動かした場合と区別しない
+        mockMvc.perform(reorderLists(TODO_LIST_ID, DONE_LIST_ID, DOING_LIST_ID))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("FIXED_LAST_MUST_BE_LAST"));
+    }
+
+    @Test
+    void 並びに過不足があれば400を返す() throws Exception {
+        // 進行中が抜けている。画面の情報が古いときに起きる
+        mockMvc.perform(reorderLists(TODO_LIST_ID, DONE_LIST_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LIST_IDS_MISMATCH"));
+    }
+
+    @Test
+    void 並びに同じIDが2回あれば400を返す() throws Exception {
+        // 件数は合っているが顔ぶれが違う。集合にすると潰れるので件数も見ている
+        mockMvc.perform(reorderLists(TODO_LIST_ID, TODO_LIST_ID, DONE_LIST_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LIST_IDS_MISMATCH"));
+    }
+
+    @Test
+    void 並びに知らないリストが混ざっていたら400を返す() throws Exception {
+        mockMvc.perform(reorderLists(TODO_LIST_ID, UUID.randomUUID().toString(), DONE_LIST_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("LIST_IDS_MISMATCH"));
+    }
+
+    private static RequestBuilder reorderLists(String... listIds) {
+        String ids = Arrays.stream(listIds)
+                .map("\"%s\""::formatted)
+                .collect(Collectors.joining(", "));
+
+        return patch("/api/lists/reorder")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"list_ids": [%s]}
+                        """.formatted(ids));
     }
 
     private static RequestBuilder patchList(UUID id, String title) {

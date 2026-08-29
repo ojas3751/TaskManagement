@@ -7,6 +7,7 @@ type Props = {
   board: Board
   onAddList: (title: string) => void
   onOpenList: (listId: string) => void
+  onMoveList: (listId: string, direction: -1 | 1) => void
   onAddCard: (listId: string, title: string) => void
   onOpenCard: (cardId: string) => void
   onDeleteCard: (cardId: string) => void
@@ -22,6 +23,7 @@ export function BoardView({
   board,
   onAddList,
   onOpenList,
+  onMoveList,
   onAddCard,
   onOpenCard,
   onDeleteCard,
@@ -33,11 +35,18 @@ export function BoardView({
 
   return (
     <div className="flex items-start gap-3 overflow-x-auto px-5 pb-8 pt-4">
-      {lists.map((list) => (
+      {lists.map((list, index) => (
         <ListColumn
           key={list.id}
           list={list}
+          // 動かせるかは並びを知っているここで判断する（F-05）。列は自分の位置を知らない。
+          //
+          // 右へ動かせるのは「隣が完了列でないとき」だけ。完了列は常に最右なので、
+          // その手前の列は右へ行けない。**サーバーも 409 で断る**が、押す前に分かる方がよい
+          canMoveLeft={index > 0}
+          canMoveRight={index < lists.length - 1 && !lists[index + 1].is_fixed_last}
           onOpenList={onOpenList}
+          onMoveList={onMoveList}
           onAddCard={onAddCard}
           onOpenCard={onOpenCard}
           onDeleteCard={onDeleteCard}

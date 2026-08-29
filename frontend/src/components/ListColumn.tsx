@@ -5,7 +5,12 @@ import { TaskCard } from './TaskCard'
 
 type Props = {
   list: TaskList
+  /** 左へ動かせるか。左端の列では false（F-05） */
+  canMoveLeft: boolean
+  /** 右へ動かせるか。完了列の左隣では false（完了より右へは行けない） */
+  canMoveRight: boolean
   onOpenList: (listId: string) => void
+  onMoveList: (listId: string, direction: -1 | 1) => void
   onAddCard: (listId: string, title: string) => void
   onOpenCard: (cardId: string) => void
   onDeleteCard: (cardId: string) => void
@@ -38,13 +43,67 @@ function PencilIcon() {
 }
 
 /**
+ * 並び替えの矢印（F-05）。
+ *
+ * 図形で描く理由は PencilIcon と同じ。左右は同じ図形を反転させる（scale-x-[-1]）ため、
+ * パスは1つで済む。
+ *
+ * **端では消さずに、押せない状態で残す。** 消すと列によってボタンの数が変わり、
+ * 見出しの位置が左右にずれる。押せないことは見た目（薄さ）と disabled で伝える。
+ */
+function ArrowButton({
+  direction,
+  listTitle,
+  disabled,
+  onClick,
+}: {
+  direction: -1 | 1
+  listTitle: string
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={`「${listTitle}」を${direction === -1 ? '左' : '右'}へ移動`}
+      className="flex size-5 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-ink-sub hover:text-ink disabled:cursor-default disabled:opacity-30 disabled:hover:text-ink-sub"
+    >
+      <svg
+        viewBox="0 0 16 16"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className={direction === 1 ? 'scale-x-[-1]' : undefined}
+      >
+        <path d="M10 3L5 8l5 5" />
+      </svg>
+    </button>
+  )
+}
+
+/**
  * 列（画面設計 1章）。
  *
- * この段階では見出し・[改名]・[+ タスク追加]・タスクの一覧を出す。
- * 列の並び替え・削除（Step 9）、完了列のチェックボックスと
- * 折りたたみ（Step 10）はまだ置かない。
+ * この段階では並び替えの矢印・見出し・[+ タスク追加]・タスクの一覧を出す。
+ * 完了列のチェックボックスと折りたたみ（Step 10）はまだ置かない。
  */
-export function ListColumn({ list, onOpenList, onAddCard, onOpenCard, onDeleteCard }: Props) {
+export function ListColumn({
+  list,
+  canMoveLeft,
+  canMoveRight,
+  onOpenList,
+  onMoveList,
+  onAddCard,
+  onOpenCard,
+  onDeleteCard,
+}: Props) {
   // 開閉は列ごとに独立していて他と共有する必要がないので、ここで持つ。
   // リストの詳細モーダルは App が持つ（削除の確認モーダルへ続くため）
   const [isAdding, setIsAdding] = useState(false)
@@ -53,6 +112,33 @@ export function ListColumn({ list, onOpenList, onAddCard, onOpenCard, onDeleteCa
 
   return (
     <section className="flex w-65 shrink-0 flex-col gap-2 self-start rounded-card bg-list-bg p-2.5">
+      {/* 並び替えの行（F-05）。リスト名の**上**に置き、両端に寄せる。
+
+          見出しの行（リスト名の横）に入れないのは、**260px しかない列幅をリスト名と
+          奪い合い、名前が早く … で切れる**ため。上の行なら名前の幅は減らない。
+
+          **「完了」列にはボタンを出さないが、行の高さは空ける。** 出し分けで高さが
+          変わると、完了列だけタスクが1行ぶん上にずれ、編集アイコンで避けた
+          「列ごとにタスクの開始位置が違う」状態に戻る */}
+      <div className="flex h-5 items-center justify-between">
+        {!list.is_fixed_last && (
+          <>
+            <ArrowButton
+              direction={-1}
+              listTitle={list.title}
+              disabled={!canMoveLeft}
+              onClick={() => onMoveList(list.id, -1)}
+            />
+            <ArrowButton
+              direction={1}
+              listTitle={list.title}
+              disabled={!canMoveRight}
+              onClick={() => onMoveList(list.id, 1)}
+            />
+          </>
+        )}
+      </div>
+
       {/* 見出しの行。編集アイコンを左端に置き、リスト名はその右に置く。
 
           **見出しの下に置かないのは、列ごとにタスクの開始位置がずれるため。**
