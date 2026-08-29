@@ -2,6 +2,7 @@ package com.example.taskmanagement.web;
 
 import com.example.taskmanagement.board.BoardNotFoundException;
 import com.example.taskmanagement.board.CardIdsMismatchException;
+import com.example.taskmanagement.board.CardIdsRequiredException;
 import com.example.taskmanagement.board.CardLimitExceededException;
 import com.example.taskmanagement.board.CardNotFoundException;
 import com.example.taskmanagement.board.DueTimeWithoutDueDateException;
@@ -95,6 +96,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleDueTimeWithoutDueDate(DueTimeWithoutDueDateException e) {
         return ResponseEntity.badRequest()
                 .body(new ApiErrorResponse("DUE_TIME_WITHOUT_DUE_DATE", "期限の日付を入力してください。", "due_at"));
+    }
+
+    /**
+     * 選択削除で対象が 1 件も指定されなかった（docs/design/api.md 3.10）。
+     *
+     * <p>DueTimeWithoutDueDateException と同じく {@code @Valid} ではなくサービスが投げる。
+     * リクエストの record に {@code @NotEmpty} を付けると、上の VALIDATION_TARGETS に
+     * 載っていないため汎用の {@code INVALID_REQUEST} になってしまい、仕様が定めた
+     * このコードを返せないため。
+     */
+    @ExceptionHandler(CardIdsRequiredException.class)
+    public ResponseEntity<ApiErrorResponse> handleCardIdsRequired(CardIdsRequiredException e) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of("CARD_IDS_REQUIRED", "削除するタスクを選択してください"));
     }
 
     /**

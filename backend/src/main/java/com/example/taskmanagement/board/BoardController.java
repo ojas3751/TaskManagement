@@ -121,6 +121,20 @@ public class BoardController {
     }
 
     /**
+     * 完了タスクの選択削除（F-15）。仕様は docs/design/api.md 3.10。
+     *
+     * <p>DELETE ではなく POST なのは、削除する ID の一覧を本文で渡すため。DELETE に本文を
+     * 付けることは仕様上禁じられていないが、途中の経路に落とされることがあり当てにできない。
+     *
+     * <p>パスに ID を含めないのは /api/cards/move と同じ理由で、この操作が 1 件ではなく
+     * <strong>複数のタスクとリスト内の並び全体</strong>を書き換えるため。
+     */
+    @PostMapping("/api/cards/bulk-delete")
+    public BoardResponse bulkDeleteCards(@Valid @RequestBody BulkDeleteCardsRequest request) {
+        return boardService.bulkDeleteCards(request);
+    }
+
+    /**
      * タスクの移動（F-13, F-23）。仕様は docs/design/api.md 3.9。
      *
      * <p>パスに ID を含めず /api/cards/move としているのは、この操作が 1 件のタスクだけでなく

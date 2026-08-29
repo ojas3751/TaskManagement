@@ -1,6 +1,7 @@
 package com.example.taskmanagement.board;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -8,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.example.taskmanagement.support.IntegrationTest;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -195,6 +198,82 @@ class BoardControllerTest {
     }
 
     @Test
+    void まとめて削除すると残ったタスクのpositionが詰まる() throws Exception {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID third = UUID.randomUUID();
+        UUID fourth = UUID.randomUUID();
+        // 先頭に積まれるので、並びは 4枚目・3枚目・2枚目・1枚目 になる
+        mockMvc.perform(postCard(first, "1枚目")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(second, "2枚目")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(third, "3枚目")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(fourth, "4枚目")).andExpect(status().isCreated());
+
+        // 離れた 2 件（position = 0 の「4枚目」と position = 2 の「2枚目」）を消す。
+        // 隣り合う 2 件だと、1 件ずつ詰める処理でも通ってしまい確認にならない
+        mockMvc.perform(bulkDelete(fourth, second))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[0].cards.length()").value(2))
+                // 抜けた数だけ詰まっていること。位置ごとに詰め幅が違うので、
+                // shiftPositionsUp の考え方ではここが合わない
+                .andExpect(jsonPath("$.lists[0].cards[0].title").value("3枚目"))
+                .andExpect(jsonPath("$.lists[0].cards[0].position").value(0))
+                .andExpect(jsonPath("$.lists[0].cards[1].title").value("1枚目"))
+                .andExpect(jsonPath("$.lists[0].cards[1].position").value(1));
+    }
+
+    @Test
+    void 存在しないIDが混ざっていたら1件も削除しない() throws Exception {
+        UUID existing = UUID.randomUUID();
+        mockMvc.perform(postCard(existing, "巻き添えにしないタスク")).andExpect(status().isCreated());
+
+        mockMvc.perform(bulkDelete(existing, UUID.randomUUID()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
+
+        // 「消せたものだけ消す」作りだと、ここで 0 件になっている（api.md 3.10）
+        mockMvc.perform(getBoard())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[0].cards.length()").value(1))
+                .andExpect(jsonPath("$.lists[0].cards[0].title").value("巻き添えにしないタスク"));
+    }
+
+    @Test
+    void 削除対象が空なら400を返す() throws Exception {
+        mockMvc.perform(post("/api/cards/bulk-delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"card_ids": []}
+                                """))
+                .andExpect(status().isBadRequest())
+                // @NotEmpty に任せると汎用の INVALID_REQUEST になる。
+                // 仕様どおりのコードを返すため BoardService が投げている
+                .andExpect(jsonPath("$.code").value("CARD_IDS_REQUIRED"));
+    }
+
+    @Test
+    void 複数のリストにまたがって削除しても両方が詰まる() throws Exception {
+        UUID todoKept = UUID.randomUUID();
+        UUID todoGone = UUID.randomUUID();
+        UUID doingKept = UUID.randomUUID();
+        UUID doingGone = UUID.randomUUID();
+        mockMvc.perform(postCard(todoKept, "TODOに残る")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(todoGone, "TODOから消える")).andExpect(status().isCreated());
+        mockMvc.perform(postCard(doingKept, "進行中に残る", DOING_LIST_ID)).andExpect(status().isCreated());
+        mockMvc.perform(postCard(doingGone, "進行中から消える", DOING_LIST_ID)).andExpect(status().isCreated());
+
+        // どちらのリストも、消える方が position = 0（先頭に積まれるため）
+        mockMvc.perform(bulkDelete(todoGone, doingGone))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lists[0].cards.length()").value(1))
+                .andExpect(jsonPath("$.lists[0].cards[0].title").value("TODOに残る"))
+                .andExpect(jsonPath("$.lists[0].cards[0].position").value(0))
+                .andExpect(jsonPath("$.lists[1].cards.length()").value(1))
+                .andExpect(jsonPath("$.lists[1].cards[0].title").value("進行中に残る"))
+                .andExpect(jsonPath("$.lists[1].cards[0].position").value(0));
+    }
+
+    @Test
     void 別のリストへ移すと移動先の末尾に付き移動元が詰まる() throws Exception {
         UUID stay = UUID.randomUUID();
         UUID moving = UUID.randomUUID();
@@ -326,6 +405,21 @@ class BoardControllerTest {
 
     private static RequestBuilder patchCard(UUID id, String body) {
         return patch("/api/cards/{id}", id).contentType(MediaType.APPLICATION_JSON).content(body);
+    }
+
+    private static RequestBuilder getBoard() {
+        return get("/api/board");
+    }
+
+    /** 選択削除（F-15）。ID を並べるだけで呼べるようにしておく */
+    private static RequestBuilder bulkDelete(UUID... ids) {
+        String body = """
+                {"card_ids": [%s]}
+                """.formatted(Stream.of(ids)
+                        .map(id -> "\"" + id + "\"")
+                        .collect(Collectors.joining(", ")));
+
+        return post("/api/cards/bulk-delete").contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
     private static RequestBuilder postCard(UUID id, String title) {
