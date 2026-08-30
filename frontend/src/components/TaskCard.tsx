@@ -1,3 +1,5 @@
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { Card } from '../api/types'
 import { dueStatus } from '../lib/dueStatus'
 import { formatDueAt } from '../lib/formatDueAt'
@@ -6,6 +8,8 @@ type Props = {
   card: Card
   /** 「完了」列に置かれているか。true なら期限による色分けを上書きする（機能仕様書 2.7） */
   isDone: boolean
+  /** 掴めなくするか（F-13）。応答待ちの間は true にする */
+  isDragDisabled?: boolean
   onOpen: (cardId: string) => void
   onDelete: (cardId: string) => void
 }
@@ -90,16 +94,42 @@ function TrashIcon() {
  * ボーダーの幅は Step 2 の時点で確保してある。区分によって幅が変わらないので、
  * 色が付いてもカードの大きさは動かない。
  */
-export function TaskCard({ card, isDone, onOpen, onDelete }: Props) {
+export function TaskCard({ card, isDone, isDragDisabled = false, onOpen, onDelete }: Props) {
   const due = formatDueAt(card)
   // 「完了」列に在ることだけを条件に上書きする。差し戻せば色分けが復活する
   const style = isDone ? CARD_STYLES.done : CARD_STYLES[dueStatus(card)]
+
+  /**
+   * ドラッグ&ドロップ（F-13）。掴む対象はカード全体で、専用のつまみは置かない。
+   *
+   * **掴める範囲を広く取れるのは、`PointerSensor` に距離のしきい値を置いているため**
+   * （BoardView）。少し動かすまではドラッグを始めないので、タイトルのクリックで詳細が
+   * 開くこと（F-07）も、ゴミ箱アイコンの削除（F-08）も今までどおり動く。
+   *
+   * `attributes` はキーボード操作のために要る。カード全体がフォーカスを受け取り、
+   * そこで Space を押すと掴める。**中のボタンに乗っている間は掴まない** — dnd-kit の
+   * KeyboardSensor が「押した先が掴む対象そのものか」を見るため、タイトルの上での
+   * Enter は今までどおり詳細を開く。
+   */
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: card.id,
+    disabled: isDragDisabled,
+  })
 
   return (
     // 幅は 240px 固定で、列の中では中央に置く（F-15）。列の内側 280px との差 40px が
     // 左右 20px ずつの余白になり、完了列でチェックボックスを出すときの寄り代になる。
     // **全列で同じ幅**にしてあるので、完了列だけカードの大きさが変わることはない
-    <article className={`mx-auto w-60 rounded-card ${style.card}`}>
+    <article
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      // transform / transition は値が実行時に決まるので、クラス名ではなく style で当てる。
+      // Tailwind はソースを走査してクラスを生成するため、動く値はクラスにできない
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      // 掴んでいる間、元の位置は薄くする（画面設計 3章）。まだそこに属していることを示す
+      className={`mx-auto w-60 touch-none rounded-card ${style.card} ${isDragging ? 'opacity-40' : ''}`}
+    >
       {/* クリックできるのはタイトル部分（画面設計 4章）。カード全体をボタンにすると、
           期限の行に置く削除アイコン（F-08, #26）がボタンの入れ子になってしまう */}
       <h3 className="m-0 font-semibold">

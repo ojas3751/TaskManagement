@@ -588,13 +588,13 @@ describe('待っていることの見せ方（#44）', () => {
 
     // 正常時（10ms 前後）に表示がチラつかないことがこの間隔の目的
     act(() => void vi.advanceTimersByTime(199))
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status', { name: '通信の状態' })).not.toBeInTheDocument()
 
     act(() => void vi.advanceTimersByTime(1))
-    expect(screen.getByRole('status')).toHaveTextContent('更新しています…')
+    expect(screen.getByRole('status', { name: '通信の状態' })).toHaveTextContent('更新しています…')
 
     act(() => void vi.advanceTimersByTime(2_000))
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(screen.getByRole('status', { name: '通信の状態' })).toHaveTextContent(
       'データベースの接続をチェック中です…',
     )
   })
@@ -608,14 +608,14 @@ describe('待っていることの見せ方（#44）', () => {
 
     addTask('新しいタスク')
     act(() => void vi.advanceTimersByTime(200))
-    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: '通信の状態' })).toBeInTheDocument()
 
     // waitFor は実時間でポーリングするので、タイマーを止めている間は進まない。
     // 応答の反映はマイクロタスクなので、act で流せば足りる
     await act(async () => {
       pending.resolve(board)
     })
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status', { name: '通信の状態' })).not.toBeInTheDocument()
   })
 })
 
