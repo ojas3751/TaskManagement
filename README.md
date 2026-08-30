@@ -8,7 +8,7 @@ Web 開発の学習を副次目的としており、**要件定義から順に�
 
 | | |
 | --- | --- |
-| **現在地** | Step 2 まで完了（ボード画面が DB の内容を表示する）。全体像は [開発計画](docs/development-plan.md) |
+| **現在地** | **MVP 完成**（Step 0〜11 がすべて完了）。タスクの追加・編集・削除・移動、列の追加・改名・削除・並び替えが揃っている。全体像は [開発計画](docs/development-plan.md) |
 | **入り口** | `http://localhost:3000` |
 | **文書の起点** | [要件定義書](docs/requirements.md) |
 | **作業ルール** | [CLAUDE.md](CLAUDE.md)（Issue → ブランチ → PR） |
