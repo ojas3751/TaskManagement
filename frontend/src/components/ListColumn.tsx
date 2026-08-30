@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { TaskList } from '../api/types'
 import { toListDroppableId } from '../lib/dropTarget'
 import { NameInputModal } from './NameInputModal'
@@ -22,6 +22,37 @@ type Props = {
   onBulkDeleteCards: (cardIds: string[]) => void
   /** 応答待ちの間はタスクを掴ませない（F-13）。他の操作と同じ扱い */
   isDragDisabled: boolean
+  /** いま掴まれているタスク。掴んでいなければ null */
+  draggingCardId: string | null
+  /**
+   * この列に落ちる位置（F-13）。落ち先が他の列なら null。
+   *
+   * **掴んでいるタスクを除いた並びでの位置。** 落ち先を決める側（dropTarget.ts）と
+   * 数え方を揃えてある。
+   */
+  dropIndex: number | null
+}
+
+/**
+ * 挿入位置の線（画面設計 3章）。
+ *
+ * **どこに落ちるかを、指を離す前に見せる。** 落ちた場所が予想と違うと、利用者は毎回
+ * 結果を確認してからやり直すことになる。
+ *
+ * 線だけで示し、カードは動かさない。dnd-kit の標準は「他のカードが動いて隙間が空く」だが、
+ * **列をまたぐと効かない**（並び替えの範囲が列ごとに別々のため）。線なら同じ見せ方で
+ * 両方を扱える。
+ *
+ * 高さのぶんだけ並びが動かないよう、**場所を取らずに描く**（h-0 と負のマージン）。
+ * 線が出た瞬間にカードが 2px ずつ下へずれると、それ自体が落ち先の誤解を生む。
+ */
+function InsertionLine() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none -my-px h-0.5 rounded-full bg-ink"
+    />
+  )
 }
 
 /**
@@ -117,6 +148,8 @@ export function ListColumn({
   onDeleteCard,
   onBulkDeleteCards,
   isDragDisabled,
+  draggingCardId,
+  dropIndex,
 }: Props) {
   // 開閉は列ごとに独立していて他と共有する必要がないので、ここで持つ。
   // リストの詳細モーダルは App が持つ（削除の確認モーダルへ続くため）
@@ -142,6 +175,20 @@ export function ListColumn({
    * 件数のある列にも付ける。カードとカードの間や下の余白に落としたときの行き先になる。
    */
   const { setNodeRef: setDropRef } = useDroppable({ id: toListDroppableId(list.id) })
+
+  /**
+   * 線をどのタスクの手前に引くか（F-13）。末尾に引く場合は null。
+   *
+   * `dropIndex` は**掴んでいるタスクを除いた並び**で数えられているので、同じ並びから
+   * 引く。掴んでいるタスクは透明で場所だけ残っているため、除かずに数えると 1 つずれる。
+   */
+  const beforeCardId =
+    dropIndex === null
+      ? null
+      : (cards.filter((card) => card.id !== draggingCardId)[dropIndex]?.id ?? null)
+
+  // 末尾に引くのは、落ち先がこの列で、かつ手前に引く相手がいないとき
+  const showLineAtEnd = dropIndex !== null && beforeCardId === null
 
   // チェックボックスを出すのは完了列だけ（画面設計 1章）。列名ではなく is_fixed_last で
   // 見る。名前で判定すると、改名（F-03）できるようになった時点で壊れる
@@ -330,9 +377,13 @@ export function ListColumn({
           **縦のスクロールバーは細くする。** 既定の幅（15px 前後）はカードの右余白より
           太く、列の内側をはっきり削る。scrollbar-width は Tailwind のユーティリティに
           無いので、プロパティを直接指定する */}
+      {/* **上下に 1px の余白を取る。** 挿入位置の線は、並びを動かさないために負のマージンで
+          場所を取らずに描いている（InsertionLine）。そのぶん、線が先頭や末尾に出たときは
+          この領域から 1px はみ出す。**はみ出せば縦のスクロールバーが出る**ため、
+          線が収まるだけの余白を先に確保しておく。線が半分しか見えないのも同じ原因 */}
       <div
         ref={setDropRef}
-        className="flex min-h-0 flex-col gap-2 overflow-x-hidden overflow-y-auto [scrollbar-width:thin]"
+        className="flex min-h-0 flex-col gap-2 overflow-x-hidden overflow-y-auto py-px [scrollbar-width:thin]"
       >
         {/* 並び替えの範囲はこの列の中（F-13）。**items には表示順どおりの id を渡す。**
             dnd-kit はこの配列の添字で「何番目に落ちるか」を決めるので、position の
@@ -344,31 +395,35 @@ export function ListColumn({
           {cards.length === 0 ? (
             <p className="m-0 py-4 text-center text-ink-sub">（タスクなし）</p>
           ) : (
-            cards.map((card) =>
-              isSelectable ? (
-                <SelectableTaskRow
-                  key={card.id}
-                  card={card}
-                  isSelected={selectedIds.has(card.id)}
-                  isDragDisabled={isDragDisabled}
-                  onToggle={toggle}
-                  onOpen={onOpenCard}
-                  onDelete={onDeleteCard}
-                />
-              ) : (
-                <TaskCard
-                  key={card.id}
-                  card={card}
-                  // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
-                  // 改名（F-03, Step 9）できるようになった時点で壊れる
-                  isDone={list.is_fixed_last}
-                  isDragDisabled={isDragDisabled}
-                  onOpen={onOpenCard}
-                  onDelete={onDeleteCard}
-                />
-              ),
-            )
+            cards.map((card) => (
+              <Fragment key={card.id}>
+                {beforeCardId === card.id && <InsertionLine />}
+                {isSelectable ? (
+                  <SelectableTaskRow
+                    card={card}
+                    isSelected={selectedIds.has(card.id)}
+                    isDragDisabled={isDragDisabled}
+                    onToggle={toggle}
+                    onOpen={onOpenCard}
+                    onDelete={onDeleteCard}
+                  />
+                ) : (
+                  <TaskCard
+                    card={card}
+                    // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
+                    // 改名（F-03, Step 9）できるようになった時点で壊れる
+                    isDone={list.is_fixed_last}
+                    isDragDisabled={isDragDisabled}
+                    onOpen={onOpenCard}
+                    onDelete={onDeleteCard}
+                  />
+                )}
+              </Fragment>
+            ))
           )}
+
+          {/* 末尾に落ちる場合の線。タスクが0件の列では「（タスクなし）」の下に出る */}
+          {showLineAtEnd && <InsertionLine />}
         </SortableContext>
       </div>
 

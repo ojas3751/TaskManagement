@@ -1,5 +1,4 @@
 import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties } from 'react'
 import type { Card } from '../api/types'
 import { dueStatus } from '../lib/dueStatus'
@@ -176,7 +175,7 @@ function TaskCardView({
  * Enter は今までどおり詳細を開く。
  */
 export function TaskCard({ card, isDone, isDragDisabled = false, onOpen, onDelete }: Props) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
     id: card.id,
     disabled: isDragDisabled,
   })
@@ -189,7 +188,12 @@ export function TaskCard({ card, isDone, isDragDisabled = false, onOpen, onDelet
       onDelete={onDelete}
       dragRef={setNodeRef}
       dragProps={{ ...attributes, ...listeners }}
-      dragStyle={{ transform: CSS.Transform.toString(transform), transition }}
+      // **useSortable が返す transform は当てない。** 当てると、落ち先の手前のカードが
+      // ずれて隙間が空く（dnd-kit の標準の見せ方）。落ち先は線で示すと決めたので
+      // （画面設計 3章）、隙間まで空くと示し方が二重になって読みにくい。
+      //
+      // **列をまたぐと隙間は原理的に出ない**（並び替えの範囲が列ごとに別々のため）ことも
+      // あり、線に一本化した方が、同じ列でも別の列でも見え方が揃う
       // 掴んでいる間、元の位置は**透明にして場所だけ残す**（#76）。
       //
       // **消さないのが肝。** display を切ると並びが詰まり、掴んだ瞬間に列全体が

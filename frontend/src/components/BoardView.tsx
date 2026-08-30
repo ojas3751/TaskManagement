@@ -1,20 +1,23 @@
 import {
-  closestCorners,
   DndContext,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  pointerWithin,
   useSensor,
   useSensors,
-  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useState } from 'react'
 import type { Board } from '../api/types'
-import { isSamePlace, resolveDropTarget } from '../lib/dropTarget'
+import {
+  createDropCollisionDetection,
+  isSamePlace,
+  resolveDropTarget,
+  type DropTarget,
+} from '../lib/dropTarget'
 import { ListColumn } from './ListColumn'
 import { NameInputModal } from './NameInputModal'
 import { TaskCardOverlay } from './TaskCard'
@@ -78,21 +81,8 @@ export function BoardView({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  /**
-   * どこに落ちるかの判定（F-13）。
-   *
-   * **ポインタが実際に載っている受け口だけを対象にする。** 距離で決める方式
-   * （closestCenter / closestCorners）は、列と列の間の余白にポインタがあっても
-   * いちばん近い列を選ぶため、**載せていない列が移動先になる。** 実際に「カーソルが
-   * リストの上に無いのに移動先が切り替わる」という形で出ていた（#76）。
-   *
-   * どこにも載っていなければ何も返さない。そのまま離せば移動しない（画面設計 3章）。
-   *
-   * **キーボード操作のときだけ距離で決める。** 掴んで矢印で動かす操作にポインタは
-   * 存在しないので、載っているかどうかを問えない。
-   */
-  const collisionDetection: CollisionDetection = (args) =>
-    args.pointerCoordinates ? pointerWithin(args) : closestCorners(args)
+  // 落ち先の求め方は dropTarget.ts に置く（ポインタのY座標で決める）
+  const collisionDetection = createDropCollisionDetection(board)
 
   /**
    * ドラッグ中のタスク（F-13）。ポインタに追従する本体を描くために持つ。
@@ -106,10 +96,31 @@ export function BoardView({
     ? lists.flatMap((list) => list.cards).find((card) => card.id === dragging.cardId)
     : undefined
 
+  /**
+   * いま落ちる位置（F-13）。**線を引くために持つ。**
+   *
+   * `over` から毎回引き直すのではなく状態に控えるのは、**線を引くのが列（ListColumn）
+   * だから。** dnd-kit の `over` は `DndContext` の中でしか読めない。
+   *
+   * **dnd-kit が決めた落ち先から作る。** ポインタのY座標から線の位置を直接計算すると、
+   * キーボードで掴んで矢印で動かしているときに線が出ない（ポインタが存在しないため）。
+   */
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
+
   const handleDragStart = (event: DragStartEvent) => {
     const cardId = String(event.active.id)
     const list = lists.find((l) => l.cards.some((card) => card.id === cardId))
     if (list) setDragging({ cardId, isDone: list.is_fixed_last })
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event
+    setDropTarget(over ? resolveDropTarget(board, String(over.id), String(active.id)) : null)
+  }
+
+  const clearDrag = () => {
+    setDragging(null)
+    setDropTarget(null)
   }
 
   /**
@@ -124,11 +135,11 @@ export function BoardView({
    */
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
-    setDragging(null)
+    clearDrag()
     if (!over) return
 
     const cardId = String(active.id)
-    const target = resolveDropTarget(board, String(over.id))
+    const target = resolveDropTarget(board, String(over.id), cardId)
     if (!target || isSamePlace(board, cardId, target)) return
 
     onMoveCard(cardId, target.listId, target.index)
@@ -139,9 +150,10 @@ export function BoardView({
       sensors={sensors}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      // 範囲の外で離した場合も、浮かせた本体は片付ける（画面設計 3章）
-      onDragCancel={() => setDragging(null)}
+      // 範囲の外で離した場合も、浮かせた本体と線は片付ける（画面設計 3章）
+      onDragCancel={clearDrag}
       // **ドラッグ中の自動スクロールは持たない**（画面設計 3章）。落としたい位置が
       // 見えていない場合は、掴む前にその列をスクロールしておく（F-25）。
       // 既定では有効なので、明示的に切らないと文書と実装が食い違う
@@ -166,6 +178,9 @@ export function BoardView({
           onDeleteCard={onDeleteCard}
           onBulkDeleteCards={onBulkDeleteCards}
           isDragDisabled={isDragDisabled}
+          draggingCardId={dragging?.cardId ?? null}
+          // 線を出すのは落ち先の列だけ。他の列には出さない
+          dropIndex={dropTarget?.listId === list.id ? dropTarget.index : null}
         />
       ))}
 
