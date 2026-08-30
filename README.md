@@ -146,6 +146,7 @@ pwsh -File scripts/free-port.ps1 3000 8080
 | [データベース設計](docs/design/database.md) | ER図、テーブル定義、`position` の採番方式 |
 | [API設計](docs/design/api.md) | エンドポイントと入出力仕様 |
 | [開発計画](docs/development-plan.md) | Step 0〜11。GitHub のマイルストーンと対応 |
+| [ブラッシュアップ案](docs/backlog.md) | **MVP 完成後にやることの候補。** 着手する順、保留するもの、実装面の改善案 |
 | [運用手順](docs/operations.md) | 初回セットアップ、起動、バックアップ |
 
 **初めて読む場合は上から順に読むと前提が積み上がる。** 各文書は独立した改訂履歴を持ち、版の刻み方は各文書の冒頭に書いてある。索引と読む順の詳細は [ドキュメント一覧](docs/README.md)。
