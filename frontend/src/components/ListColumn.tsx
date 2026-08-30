@@ -1,6 +1,8 @@
+import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useState } from 'react'
 import type { TaskList } from '../api/types'
+import { toListDroppableId } from '../lib/dropTarget'
 import { NameInputModal } from './NameInputModal'
 import { SelectableTaskRow } from './SelectableTaskRow'
 import { TaskCard } from './TaskCard'
@@ -129,6 +131,17 @@ export function ListColumn({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const cards = [...list.cards].sort((a, b) => a.position - b.position)
+
+  /**
+   * 列そのものをドロップの受け口として登録する（F-13）。
+   *
+   * **これが無いと、タスクが 0 件の列には落とせない。** dnd-kit が重なりを見るのは
+   * 登録された受け口だけで、カードが 1 枚も無い列には見るものが無くなるため。
+   * 画面設計 3章の「（タスクなし）の領域全体が受け口になる」がこれにあたる。
+   *
+   * 件数のある列にも付ける。カードとカードの間や下の余白に落としたときの行き先になる。
+   */
+  const { setNodeRef: setDropRef } = useDroppable({ id: toListDroppableId(list.id) })
 
   // チェックボックスを出すのは完了列だけ（画面設計 1章）。列名ではなく is_fixed_last で
   // 見る。名前で判定すると、改名（F-03）できるようになった時点で壊れる
@@ -317,7 +330,10 @@ export function ListColumn({
           **縦のスクロールバーは細くする。** 既定の幅（15px 前後）はカードの右余白より
           太く、列の内側をはっきり削る。scrollbar-width は Tailwind のユーティリティに
           無いので、プロパティを直接指定する */}
-      <div className="flex min-h-0 flex-col gap-2 overflow-x-hidden overflow-y-auto [scrollbar-width:thin]">
+      <div
+        ref={setDropRef}
+        className="flex min-h-0 flex-col gap-2 overflow-x-hidden overflow-y-auto [scrollbar-width:thin]"
+      >
         {/* 並び替えの範囲はこの列の中（F-13）。**items には表示順どおりの id を渡す。**
             dnd-kit はこの配列の添字で「何番目に落ちるか」を決めるので、position の
             昇順に並べた cards から作る必要がある */}

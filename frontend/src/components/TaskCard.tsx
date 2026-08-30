@@ -1,5 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import type { CSSProperties } from 'react'
 import type { Card } from '../api/types'
 import { dueStatus } from '../lib/dueStatus'
 import { formatDueAt } from '../lib/formatDueAt'
@@ -88,47 +89,46 @@ function TrashIcon() {
 }
 
 /**
- * 一覧に出すタスク（画面設計 2章）。
+ * カードの見た目そのもの（画面設計 2章）。
  * 表示するのはタイトルと期限だけで、説明文は出さない。
  *
  * ボーダーの幅は Step 2 の時点で確保してある。区分によって幅が変わらないので、
  * 色が付いてもカードの大きさは動かない。
+ *
+ * **列に並ぶカードと、ドラッグ中にポインタへ追従する本体の両方がこれを使う**（F-13）。
+ * 見た目を1か所に持つためで、片方だけ直して食い違うことを避けている。
+ * ドラッグの仕掛けはここには無く、外側の `TaskCard` が持つ。
  */
-export function TaskCard({ card, isDone, isDragDisabled = false, onOpen, onDelete }: Props) {
+function TaskCardView({
+  card,
+  isDone,
+  onOpen,
+  onDelete,
+  dragRef,
+  dragProps,
+  dragStyle,
+  extraClassName = '',
+}: Omit<Props, 'isDragDisabled'> & {
+  dragRef?: (node: HTMLElement | null) => void
+  dragProps?: Record<string, unknown>
+  dragStyle?: CSSProperties
+  extraClassName?: string
+}) {
   const due = formatDueAt(card)
   // 「完了」列に在ることだけを条件に上書きする。差し戻せば色分けが復活する
   const style = isDone ? CARD_STYLES.done : CARD_STYLES[dueStatus(card)]
-
-  /**
-   * ドラッグ&ドロップ（F-13）。掴む対象はカード全体で、専用のつまみは置かない。
-   *
-   * **掴める範囲を広く取れるのは、`PointerSensor` に距離のしきい値を置いているため**
-   * （BoardView）。少し動かすまではドラッグを始めないので、タイトルのクリックで詳細が
-   * 開くこと（F-07）も、ゴミ箱アイコンの削除（F-08）も今までどおり動く。
-   *
-   * `attributes` はキーボード操作のために要る。カード全体がフォーカスを受け取り、
-   * そこで Space を押すと掴める。**中のボタンに乗っている間は掴まない** — dnd-kit の
-   * KeyboardSensor が「押した先が掴む対象そのものか」を見るため、タイトルの上での
-   * Enter は今までどおり詳細を開く。
-   */
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: card.id,
-    disabled: isDragDisabled,
-  })
 
   return (
     // 幅は 240px 固定で、列の中では中央に置く（F-15）。列の内側 280px との差 40px が
     // 左右 20px ずつの余白になり、完了列でチェックボックスを出すときの寄り代になる。
     // **全列で同じ幅**にしてあるので、完了列だけカードの大きさが変わることはない
     <article
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
+      ref={dragRef}
+      {...dragProps}
       // transform / transition は値が実行時に決まるので、クラス名ではなく style で当てる。
       // Tailwind はソースを走査してクラスを生成するため、動く値はクラスにできない
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      // 掴んでいる間、元の位置は薄くする（画面設計 3章）。まだそこに属していることを示す
-      className={`mx-auto w-60 touch-none rounded-card ${style.card} ${isDragging ? 'opacity-40' : ''}`}
+      style={dragStyle}
+      className={`mx-auto w-60 touch-none rounded-card ${style.card} ${extraClassName}`}
     >
       {/* クリックできるのはタイトル部分（画面設計 4章）。カード全体をボタンにすると、
           期限の行に置く削除アイコン（F-08, #26）がボタンの入れ子になってしまう */}
@@ -159,5 +159,74 @@ export function TaskCard({ card, isDone, isDragDisabled = false, onOpen, onDelet
         </button>
       </div>
     </article>
+  )
+}
+
+/**
+ * 列に並ぶタスク。ドラッグで掴める（F-13）。
+ *
+ * **掴む対象はカード全体で、専用のつまみは置かない。** 掴める範囲を広く取れるのは、
+ * `PointerSensor` に距離のしきい値を置いているため（BoardView）。少し動かすまでは
+ * ドラッグを始めないので、タイトルのクリックで詳細が開くこと（F-07）も、
+ * ゴミ箱アイコンの削除（F-08）も今までどおり動く。
+ *
+ * `attributes` はキーボード操作のために要る。カード全体がフォーカスを受け取り、
+ * そこで Space を押すと掴める。**中のボタンに乗っている間は掴まない** — dnd-kit の
+ * KeyboardSensor が「押した先が掴む対象そのものか」を見るため、タイトルの上での
+ * Enter は今までどおり詳細を開く。
+ */
+export function TaskCard({ card, isDone, isDragDisabled = false, onOpen, onDelete }: Props) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: card.id,
+    disabled: isDragDisabled,
+  })
+
+  return (
+    <TaskCardView
+      card={card}
+      isDone={isDone}
+      onOpen={onOpen}
+      onDelete={onDelete}
+      dragRef={setNodeRef}
+      dragProps={{ ...attributes, ...listeners }}
+      dragStyle={{ transform: CSS.Transform.toString(transform), transition }}
+      // 掴んでいる間、元の位置は**透明にして場所だけ残す**（#76）。
+      //
+      // **消さないのが肝。** display を切ると並びが詰まり、掴んだ瞬間に列全体が
+      // 動いてしまう。透明なら幅も高さもそのままなので、空いた場所が「ここに戻る／
+      // ここから出ていく」という予約として読める。
+      //
+      // 当初は薄く（opacity-40）残していた。画面設計 3章の「まだそこに属していることを
+      // 示す」に沿ったものだったが、**ポインタに追従する本体と同じカードが2枚見える**
+      // ことになり、実際に触ると本体の方を目で追うため、薄い方は情報にならなかった
+      extraClassName={isDragging ? 'opacity-0' : ''}
+    />
+  )
+}
+
+/**
+ * ドラッグ中、ポインタに追従する本体（画面設計 3章）。
+ *
+ * **元のカードを動かすのではなく、別に描いて上に浮かせる。** 元のカードを動かすと、
+ * 列のスクロール領域（`overflow`）に切り取られて列の外へ出られない。加えて、掴んだ
+ * カードの位置は落ち先の判定にも使われるため、切り取られたり元の位置へ戻ったりすると
+ * **判定そのものがずれる。** 実際、これが無い状態では「別の列へ入れると先頭か末尾に
+ * しか入らない」「一定以上離すと元の位置へ戻る」という形で現れていた（#76）。
+ *
+ * 見た目は列に並んでいるときのまま保つ。掴んだ瞬間に姿が変わると、どれを掴んだのかを
+ * もう一度確かめることになる。
+ */
+export function TaskCardOverlay({ card, isDone }: { card: Card; isDone: boolean }) {
+  return (
+    <TaskCardView
+      card={card}
+      isDone={isDone}
+      // 浮いている本体は操作の対象ではない。押せる見た目のまま反応しないことがないよう、
+      // 何もしない関数を渡す
+      onOpen={() => {}}
+      onDelete={() => {}}
+      // 落ち影を濃くして、盤面から浮いていることを示す
+      extraClassName="cursor-grabbing shadow-[0_8px_16px_rgba(9,30,66,0.32)]"
+    />
   )
 }
