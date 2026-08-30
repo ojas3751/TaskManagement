@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   BoardApiError,
+  bulkDeleteCards,
   createCard,
   createList,
   deleteCard,
@@ -18,6 +19,7 @@ import {
   withRenamedList,
   withUpdatedCard,
   withoutCard,
+  withoutCards,
   withoutList,
 } from './lib/boardEdit'
 import { toCardIdsForAppend, withMovedCard } from './lib/moveCard'
@@ -117,6 +119,9 @@ export default function App() {
   // 削除の確認モーダルで対象にしているタスク。開いているタスクとは別に持つ。
   // 削除は詳細モーダルではなくカード上のアイコンから始まるため
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null)
+  // 選択削除（F-15）の確認モーダルで対象にしているタスク。1枚の削除とは別に持つ。
+  // 対象が複数あり、件数を文言に出すため
+  const [bulkDeletingCardIds, setBulkDeletingCardIds] = useState<string[] | null>(null)
   // 詳細モーダルで開いているリスト（F-03, F-04）。カードと同じく id で持つ。
   // 列ではなく App が持つのは、削除が確認モーダルへ続くため
   const [openListId, setOpenListId] = useState<string | null>(null)
@@ -512,6 +517,42 @@ export default function App() {
     [state, isBusy],
   )
 
+  /**
+   * 選択したタスクをまとめて削除する（F-15）。
+   *
+   * **handleDeleteCard をそのまま複数件に広げただけ。** 操作前の盤面を控えて、失敗したら
+   * それで上書きする形も同じ。**この形が正しい前提（飛んでいるリクエストが常に1本）は
+   * handleDeleteCard のコメントにある。ロックを外すなら先に巻き戻しの形を作り直すこと。**
+   *
+   * 部分的な成功を考えなくてよい。サーバーは1件でも見つからなければ1件も削除せず
+   * 404 を返すため（api.md 3.10）、結果は「全部消えた」か「何も消えていない」の
+   * どちらかにしかならない。
+   */
+  const handleBulkDeleteCards = useCallback(
+    (cardIds: string[]) => {
+      if (state.status !== 'ready' || isBusy || cardIds.length === 0) return
+
+      const before = state.board
+
+      setActionError(null)
+      setBulkDeletingCardIds(null)
+
+      setState({ status: 'ready', board: withoutCards(before, cardIds) })
+
+      setPending((n) => n + 1)
+      bulkDeleteCards(cardIds)
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+            setState({ status: 'ready', board: before })
+          },
+        )
+        .finally(() => setPending((n) => n - 1))
+    },
+    [state, isBusy],
+  )
+
   const openCard = state.status === 'ready' && openCardId ? findCard(state.board, openCardId) : undefined
   const openCardList =
     state.status === 'ready' && openCardId ? findListOfCard(state.board, openCardId) : undefined
@@ -626,6 +667,7 @@ export default function App() {
               onAddCard={handleAddCard}
               onOpenCard={setOpenCardId}
               onDeleteCard={setDeletingCardId}
+              onBulkDeleteCards={setBulkDeletingCardIds}
             />
           </div>
         )}
@@ -678,6 +720,21 @@ export default function App() {
           confirmLabel="削除する"
           onConfirm={() => handleDeleteCard(deletingCard.id)}
           onCancel={() => setDeletingCardId(null)}
+        />
+      )}
+
+      {bulkDeletingCardIds && bulkDeletingCardIds.length > 0 && (
+        <ConfirmModal
+          title="削除の確認"
+          // 個々のタスク名ではなく件数を出す（画面設計 7章）。名前を並べると、
+          // 全件選択したときにモーダルが際限なく伸びる
+          lines={[
+            `選択した${bulkDeletingCardIds.length}件のタスクを削除します。`,
+            'この操作は取り消せません。',
+          ]}
+          confirmLabel="削除する"
+          onConfirm={() => handleBulkDeleteCards(bulkDeletingCardIds)}
+          onCancel={() => setBulkDeletingCardIds(null)}
         />
       )}
     </div>

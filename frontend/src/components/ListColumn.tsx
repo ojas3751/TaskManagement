@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { TaskList } from '../api/types'
 import { NameInputModal } from './NameInputModal'
+import { SelectableTaskRow } from './SelectableTaskRow'
 import { TaskCard } from './TaskCard'
 
 type Props = {
@@ -14,6 +15,8 @@ type Props = {
   onAddCard: (listId: string, title: string) => void
   onOpenCard: (cardId: string) => void
   onDeleteCard: (cardId: string) => void
+  /** 選択したタスクをまとめて削除する（F-15）。確認モーダルは App が出す */
+  onBulkDeleteCards: (cardIds: string[]) => void
 }
 
 /**
@@ -107,17 +110,50 @@ export function ListColumn({
   onAddCard,
   onOpenCard,
   onDeleteCard,
+  onBulkDeleteCards,
 }: Props) {
   // 開閉は列ごとに独立していて他と共有する必要がないので、ここで持つ。
   // リストの詳細モーダルは App が持つ（削除の確認モーダルへ続くため）
   const [isAdding, setIsAdding] = useState(false)
 
+  /**
+   * 選択中のタスク（F-15）。**DB には保存しない**（機能仕様書 1.4）。画面上の一時的な
+   * 状態であり、テーブルに持たせると再読み込み時の初期化責務が発生するため。
+   *
+   * 完了列以外では常に空のまま。チェックボックスを出していないので触れようがない。
+   */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
   const cards = [...list.cards].sort((a, b) => a.position - b.position)
+
+  // チェックボックスを出すのは完了列だけ（画面設計 1章）。列名ではなく is_fixed_last で
+  // 見る。名前で判定すると、改名（F-03）できるようになった時点で壊れる
+  const isSelectable = list.is_fixed_last
+
+  // 盤面が差し替わると、消えたタスクの id が選択に残りうる。**いま在るものだけを数える**
+  const selected = cards.filter((card) => selectedIds.has(card.id))
+
+  const toggle = (cardId: string, isChecked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (isChecked) next.add(cardId)
+      else next.delete(cardId)
+      return next
+    })
+  }
 
   return (
     // max-h-full で、盤面から渡された高さを上限として受け取る（F-25）。
     // self-start と併せて「収まるうちは中身なりの高さ、超えたらそこで頭打ち」になる
-    <section className="flex max-h-full w-65 shrink-0 flex-col gap-2 self-start rounded-card bg-list-bg p-2.5">
+    /* 幅 300px は全列共通（BoardView の [+ リスト追加] も同じ値にすること）。
+       内側は 280px。240px のカードを中央に置くと左右 20px ずつ空き、チェックボックスを
+       出すときに右へ 12px 寄せると左が 32px・右が 8px になる（F-15）。
+
+       **縦スクロールバーの分を見込んで 284px から広げた。** scrollbar-width: thin でも
+       10px 前後を内側から取るため、284px では寄せたカードの右端が切れる（内側 264px −
+       スクロールバー ≒ 254px に対して、カード 240px ＋ 左 24px が入らない）。
+       カードを縮めずに列を広げるのは、幅より読みやすさを採る判断（#70）に合わせたもの */
+    <section className="flex max-h-full w-75 shrink-0 flex-col gap-2 self-start rounded-card bg-list-bg p-2.5">
       {/* 並び替えの行（F-05）。リスト名の**上**に置き、両端に寄せる。
 
           見出しの行（リスト名の横）に入れないのは、**260px しかない列幅をリスト名と
@@ -197,17 +233,67 @@ export function ListColumn({
         {!list.is_default && <span aria-hidden="true" className="h-5 w-3.5 shrink-0" />}
       </div>
 
-      {/* 列の最上部に置く（画面設計 1章）。末尾に置くと、追加したタスクが
-          列の先頭に入る仕様（F-06）と噛み合わず、結果を見るのにスクロールが要る */}
-      <button
-        type="button"
-        onClick={() => setIsAdding(true)}
-        // 点線にしているのは、タスクのカードと並んだときに「これはタスクではない」と
-        // 一目で分かるようにするため。実線だと、中身が空のカードのように見える
-        className="cursor-pointer rounded-card border border-dashed border-ink-sub bg-surface px-2 py-1 text-left text-ink-sub hover:bg-surface hover:text-ink"
-      >
-        ＋ タスク追加
-      </button>
+      {/* 1件でも選ばれていたら、[+ タスク追加] と**入れ替えて**全選択の行を出す（F-15）。
+
+          **足すのではなく入れ替えるのは、高さを変えないため。** 行を増やすと完了列だけ
+          タスクの先頭が1行ぶん下がり、横に並べたときに揃わなくなる。編集アイコン（v1.4）と
+          並び替えの行（v1.6）で2回避けてきた問題と同じ。
+
+          **1件も選んでいないと出ない**のは意図的。全件削除が確認モーダル1枚で到達できる
+          より、まず1件チェックさせる方が誤操作を抑えられる。完了列の [+ タスク追加] は
+          #20 でいずれ消える予定なので、入れ替えても違和感が出にくい */}
+      {selected.length > 0 ? (
+        /* 選択に関わる操作は**この1行にまとめる**。列の上下に散らすと、選択してから
+           削除するまでの視線が縦に往復する。並びは「広げる → 取り消す → 実行する」の順。
+
+           **枠と余白は [＋ タスク追加] と同じにする**（border 1px ＋ px-2 py-1）。
+           入れ替わる相手と高さが違うと、チェックを入れた瞬間に列の中身が上下にずれて
+           がたつく。**入れ替えにした意味が無くなる**ので、ここは必ず揃える。
+
+           幅は中身なりにして両端へ寄せる。等分にすると、件数が3桁になったときに
+           「200件を削除」が収まらない */
+        <div className="flex justify-between gap-1">
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set(cards.map((card) => card.id)))}
+            className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 whitespace-nowrap text-ink-sub hover:text-ink"
+          >
+            全選択
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 whitespace-nowrap text-ink-sub hover:text-ink"
+          >
+            選択解除
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onBulkDeleteCards(selected.map((card) => card.id))
+              // 送った内容は App が持っている。列が覚えておく必要はない
+              setSelectedIds(new Set())
+            }}
+            // danger は白文字とのコントラスト 6.0:1（index.css）。ConfirmModal の
+            // 「削除する」と同じ扱いで、取り消せない操作であることを色でも示す
+            className="cursor-pointer rounded-card border border-danger bg-surface px-2 py-1 whitespace-nowrap text-danger hover:bg-danger hover:text-danger-ink"
+          >
+            {selected.length}件を削除
+          </button>
+        </div>
+      ) : (
+        /* 列の最上部に置く（画面設計 1章）。末尾に置くと、追加したタスクが
+           列の先頭に入る仕様（F-06）と噛み合わず、結果を見るのにスクロールが要る */
+        <button
+          type="button"
+          onClick={() => setIsAdding(true)}
+          // 点線にしているのは、タスクのカードと並んだときに「これはタスクではない」と
+          // 一目で分かるようにするため。実線だと、中身が空のカードのように見える
+          className="cursor-pointer rounded-card border border-dashed border-ink-sub bg-surface px-2 py-1 text-left text-ink-sub hover:bg-surface hover:text-ink"
+        >
+          ＋ タスク追加
+        </button>
+      )}
 
       {/* ここだけがスクロールする（F-25）。
 
@@ -221,23 +307,41 @@ export function ListColumn({
 
           空状態も同じ入れ物に入れる。ドロップの受け口（F-13）としては
           タスクがある場合と同じ扱いになるため */}
-      <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
+      {/* 横はスクロールさせない（overflow-x-hidden）。カードは列に収まる幅で固定して
+          あるので、横に溢れるのは想定外の状態であり、スクロールで見せるものではない。
+
+          **縦のスクロールバーは細くする。** 既定の幅（15px 前後）はカードの右余白より
+          太く、列の内側をはっきり削る。scrollbar-width は Tailwind のユーティリティに
+          無いので、プロパティを直接指定する */}
+      <div className="flex min-h-0 flex-col gap-2 overflow-x-hidden overflow-y-auto [scrollbar-width:thin]">
         {cards.length === 0 ? (
           <p className="m-0 py-4 text-center text-ink-sub">（タスクなし）</p>
         ) : (
-          cards.map((card) => (
-            <TaskCard
-              key={card.id}
-              card={card}
-              // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
-              // 改名（F-03, Step 9）できるようになった時点で壊れる
-              isDone={list.is_fixed_last}
-              onOpen={onOpenCard}
-              onDelete={onDeleteCard}
-            />
-          ))
+          cards.map((card) =>
+            isSelectable ? (
+              <SelectableTaskRow
+                key={card.id}
+                card={card}
+                isSelected={selectedIds.has(card.id)}
+                onToggle={toggle}
+                onOpen={onOpenCard}
+                onDelete={onDeleteCard}
+              />
+            ) : (
+              <TaskCard
+                key={card.id}
+                card={card}
+                // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
+                // 改名（F-03, Step 9）できるようになった時点で壊れる
+                isDone={list.is_fixed_last}
+                onOpen={onOpenCard}
+                onDelete={onDeleteCard}
+              />
+            ),
+          )
         )}
       </div>
+
 
       {isAdding && (
         <NameInputModal

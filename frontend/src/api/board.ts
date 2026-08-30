@@ -231,3 +231,23 @@ export async function deleteCard(id: string): Promise<Board> {
 
   return (await res.json()) as Board
 }
+
+/**
+ * 選択したタスクをまとめて削除する（F-15）。仕様は docs/design/api.md 3.10。
+ *
+ * DELETE ではなく POST なのは、削除する ID の一覧を本文で渡すため。
+ *
+ * **存在しない ID が1つでも混ざっていたら、サーバーは1件も削除せずに 404 を返す。**
+ * 部分的に成功することがないので、呼び出し側は成功か失敗かだけを見ればよい。
+ */
+export async function bulkDeleteCards(cardIds: string[]): Promise<Board> {
+  const res = await apiFetch('/api/cards/bulk-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card_ids: cardIds }),
+  })
+
+  if (!res.ok) throw await toApiError(res, 'タスクを削除できませんでした')
+
+  return (await res.json()) as Board
+}

@@ -93,3 +93,27 @@ export function withoutCard(board: Board, cardId: string): Board {
     })),
   }
 }
+
+/**
+ * 複数のタスクをまとめて取り除いた新しい board を返す（元の board は変更しない）。
+ *
+ * withoutCard の複数版。**position を詰め直さないのも同じ**で、正しい連番は応答で入る。
+ *
+ * 1件ずつ withoutCard を重ねても同じ結果になるが、そうすると件数ぶん board を作り直す。
+ * ここでは Set にして1回で絞る。
+ *
+ * 存在しない ID が混ざっていても落とさず無視する。**画面側で弾く必要はない** —
+ * サーバーは1件でも見つからなければ1件も削除せず 404 を返すので、その場合は
+ * 呼び出し側が盤面ごと巻き戻す。
+ */
+export function withoutCards(board: Board, cardIds: string[]): Board {
+  const removing = new Set(cardIds)
+
+  return {
+    ...board,
+    lists: board.lists.map((list) => ({
+      ...list,
+      cards: list.cards.filter((card) => !removing.has(card.id)),
+    })),
+  }
+}

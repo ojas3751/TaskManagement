@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
   BoardApiError,
+  bulkDeleteCards,
   createCard,
   createList,
   deleteCard,
@@ -30,6 +31,7 @@ vi.mock('./api/board', async (importOriginal) => {
     updateCard: vi.fn(),
     moveCard: vi.fn(),
     deleteCard: vi.fn(),
+    bulkDeleteCards: vi.fn(),
   }
 })
 
@@ -375,6 +377,132 @@ describe('リストの並び替え（F-05）', () => {
   })
 })
 
+describe('完了列の選択削除（F-15）', () => {
+  /** 完了列に3件入った盤面 */
+  const withDone: Board = {
+    ...board,
+    lists: [
+      board.lists[0],
+      {
+        ...board.lists[1],
+        cards: [card('d1', '済んだ1', 0), card('d2', '済んだ2', 1), card('d3', '済んだ3', 2)],
+      },
+    ],
+  }
+
+  /** タスクのチェックボックスを操作する */
+  function check(title: string) {
+    fireEvent.click(screen.getByRole('checkbox', { name: `「${title}」を選択` }))
+  }
+
+  it('チェックボックスは完了列にだけ出る', async () => {
+    await renderBoard(withDone)
+
+    // 完了列の3件ぶんだけ。TODO の3件には出ない
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3)
+    expect(screen.getByRole('checkbox', { name: '「済んだ1」を選択' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: '「牛乳を買う」を選択' })).not.toBeInTheDocument()
+  })
+
+  it('何も選んでいないうちは選択の行を出さない', async () => {
+    await renderBoard(withDone)
+
+    expect(screen.queryByRole('button', { name: /件を削除/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '全選択' })).not.toBeInTheDocument()
+  })
+
+  it('1件でも選ぶと、タスク追加が選択の行に入れ替わる', async () => {
+    await renderBoard(withDone)
+
+    // 入れ替えなので、追加ボタンは TODO 列の分だけが残る
+    expect(screen.getAllByRole('button', { name: '＋ タスク追加' })).toHaveLength(2)
+
+    check('済んだ2')
+
+    // 高さを変えないための入れ替え。行を足すと完了列だけタスクの先頭が下がる
+    expect(screen.getAllByRole('button', { name: '＋ タスク追加' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '全選択' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '選択解除' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '1件を削除' })).toBeInTheDocument()
+  })
+
+  it('選んだ件数がラベルに出る', async () => {
+    await renderBoard(withDone)
+
+    check('済んだ1')
+    check('済んだ3')
+
+    expect(screen.getByRole('button', { name: '2件を削除' })).toBeInTheDocument()
+  })
+
+  it('「全選択」で完了列の全件が対象になる', async () => {
+    await renderBoard(withDone)
+
+    check('済んだ2')
+    fireEvent.click(screen.getByRole('button', { name: '全選択' }))
+
+    expect(screen.getByRole('button', { name: '3件を削除' })).toBeInTheDocument()
+  })
+
+  it('「選択解除」で元に戻る', async () => {
+    await renderBoard(withDone)
+
+    check('済んだ2')
+    fireEvent.click(screen.getByRole('button', { name: '選択解除' }))
+
+    expect(screen.queryByRole('button', { name: /件を削除/ })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '＋ タスク追加' })).toHaveLength(2)
+  })
+
+  it('確認モーダルに件数を出し、確認するまで消さない', async () => {
+    await renderBoard(withDone)
+
+    check('済んだ1')
+    check('済んだ2')
+    fireEvent.click(screen.getByRole('button', { name: '2件を削除' }))
+
+    // 名前を並べず件数を出す（画面設計 7章）。全件選んだときに際限なく伸びるため
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('選択した2件のタスクを削除します。')
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(bulkDeleteCards).not.toHaveBeenCalled()
+    expect(screen.getByText('済んだ1')).toBeInTheDocument()
+  })
+
+  it('確認すると、応答を待たずに消える', async () => {
+    await renderBoard(withDone)
+    const pending = deferred<Board>()
+    vi.mocked(bulkDeleteCards).mockReturnValue(pending.promise)
+
+    check('済んだ1')
+    check('済んだ3')
+    fireEvent.click(screen.getByRole('button', { name: '2件を削除' }))
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }))
+
+    expect(titlesIn('完了')).toEqual(['済んだ2'])
+    expect(bulkDeleteCards).toHaveBeenCalledWith(['d1', 'd3'])
+
+    await act(async () => {
+      pending.resolve(withDone)
+    })
+  })
+
+  it('削除に失敗したら、タスクが元の並びで戻る', async () => {
+    await renderBoard(withDone)
+    vi.mocked(bulkDeleteCards).mockRejectedValue(dbDown)
+
+    check('済んだ1')
+    check('済んだ3')
+    fireEvent.click(screen.getByRole('button', { name: '2件を削除' }))
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }))
+    expect(titlesIn('完了')).toEqual(['済んだ2'])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('データベースに接続できません。')
+    // 部分的に消えることはない。全部消えたか、何も消えていないかのどちらか
+    expect(titlesIn('完了')).toEqual(['済んだ1', '済んだ2', '済んだ3'])
+  })
+})
+
 describe('操作の失敗と巻き戻し', () => {
   it('追加に失敗したら、足したタスクが消える', async () => {
     await renderBoard()
@@ -490,3 +618,4 @@ describe('待っていることの見せ方（#44）', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })
+
