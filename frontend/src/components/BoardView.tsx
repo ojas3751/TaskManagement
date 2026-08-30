@@ -1,17 +1,23 @@
 import {
-  closestCenter,
+  closestCorners,
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useState } from 'react'
 import type { Board } from '../api/types'
+import { isSamePlace, resolveDropTarget } from '../lib/dropTarget'
 import { ListColumn } from './ListColumn'
 import { NameInputModal } from './NameInputModal'
+import { TaskCardOverlay } from './TaskCard'
 
 type Props = {
   board: Board
@@ -73,40 +79,69 @@ export function BoardView({
   )
 
   /**
+   * どこに落ちるかの判定（F-13）。
+   *
+   * **ポインタが実際に載っている受け口だけを対象にする。** 距離で決める方式
+   * （closestCenter / closestCorners）は、列と列の間の余白にポインタがあっても
+   * いちばん近い列を選ぶため、**載せていない列が移動先になる。** 実際に「カーソルが
+   * リストの上に無いのに移動先が切り替わる」という形で出ていた（#76）。
+   *
+   * どこにも載っていなければ何も返さない。そのまま離せば移動しない（画面設計 3章）。
+   *
+   * **キーボード操作のときだけ距離で決める。** 掴んで矢印で動かす操作にポインタは
+   * 存在しないので、載っているかどうかを問えない。
+   */
+  const collisionDetection: CollisionDetection = (args) =>
+    args.pointerCoordinates ? pointerWithin(args) : closestCorners(args)
+
+  /**
+   * ドラッグ中のタスク（F-13）。ポインタに追従する本体を描くために持つ。
+   *
+   * 「完了」列に在るかどうかも一緒に控える。カードの色分けは列で決まる（機能仕様書 2.7）
+   * ので、これが無いと浮かせた本体だけ色が変わる。
+   */
+  const [dragging, setDragging] = useState<{ cardId: string; isDone: boolean } | null>(null)
+
+  const draggingCard = dragging
+    ? lists.flatMap((list) => list.cards).find((card) => card.id === dragging.cardId)
+    : undefined
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const cardId = String(event.active.id)
+    const list = lists.find((l) => l.cards.some((card) => card.id === cardId))
+    if (list) setDragging({ cardId, isDone: list.is_fixed_last })
+  }
+
+  /**
    * 落とされたときに移動を確定する。
    *
-   * **この Issue で扱うのは同じ列の中だけ。** 列をまたぐ移動は次の Issue で足す。
-   * それまでは、別の列へ落としても何も起きない（元の位置に戻る）。
+   * 同じ列の中でも、列をまたいでも通り道は同じ。**移動先と位置を求める役は
+   * `resolveDropTarget` が持ち、ここはその結果を渡すだけ**にしてある。
+   * 「完了」列も他の列と区別しないので、入れることも差し戻すこともできる（UC-03）。
    *
    * `over` が null になるのは、ドロップを受け付ける範囲の外で指を離した場合。
    * このときは移動しない（画面設計 3章）。
    */
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    setDragging(null)
+    if (!over) return
 
     const cardId = String(active.id)
-    const overId = String(over.id)
+    const target = resolveDropTarget(board, String(over.id))
+    if (!target || isSamePlace(board, cardId, target)) return
 
-    const fromList = lists.find((list) => list.cards.some((card) => card.id === cardId))
-    const toList = lists.find((list) => list.cards.some((card) => card.id === overId))
-    if (!fromList || !toList || fromList.id !== toList.id) return
-
-    // **落ちる位置は、重なった相手が「いま」何番目かをそのまま使う。** 掴んだタスクを
-    // 抜いたぶんのずれを足し引きする必要はない。toCardIdsForInsert が「抜いてから挿す」
-    // 手順で、dnd-kit の arrayMove と同じ数え方に揃えてあるため（moveCard.ts）
-    const ordered = [...toList.cards].sort((a, b) => a.position - b.position)
-    const toIndex = ordered.findIndex((card) => card.id === overId)
-    if (toIndex < 0) return
-
-    onMoveCard(cardId, toList.id, toIndex)
+    onMoveCard(cardId, target.listId, target.index)
   }
 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
+      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      // 範囲の外で離した場合も、浮かせた本体は片付ける（画面設計 3章）
+      onDragCancel={() => setDragging(null)}
       // **ドラッグ中の自動スクロールは持たない**（画面設計 3章）。落としたい位置が
       // 見えていない場合は、掴む前にその列をスクロールしておく（F-25）。
       // 既定では有効なので、明示的に切らないと文書と実装が食い違う
@@ -160,6 +195,14 @@ export function BoardView({
         />
       )}
       </div>
+
+      {/* ポインタに追従する本体（画面設計 3章）。**盤面の外側に描かれる**ので、
+          列のスクロール領域に切り取られず、列をまたいで運べる */}
+      <DragOverlay>
+        {draggingCard && dragging ? (
+          <TaskCardOverlay card={draggingCard} isDone={dragging.isDone} />
+        ) : null}
+      </DragOverlay>
     </DndContext>
   )
 }
