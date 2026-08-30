@@ -4,6 +4,8 @@ import { TaskCard } from './TaskCard'
 type Props = {
   card: Card
   isSelected: boolean
+  /** 掴めなくするか（F-13）。TaskCard へそのまま渡す */
+  isDragDisabled?: boolean
   onToggle: (cardId: string, selected: boolean) => void
   onOpen: (cardId: string) => void
   onDelete: (cardId: string) => void
@@ -23,7 +25,14 @@ type Props = {
  * **寄ること自体も選択の合図として使う。** チェックの印だけでなく行の位置でも示すので、
  * 別のウィンドウが重なって見づらいときでも、選ばれている行が分かる。
  */
-export function SelectableTaskRow({ card, isSelected, onToggle, onOpen, onDelete }: Props) {
+export function SelectableTaskRow({
+  card,
+  isSelected,
+  isDragDisabled,
+  onToggle,
+  onOpen,
+  onDelete,
+}: Props) {
   /**
    * 選択済みなら常に露出させ、そうでなければホバー / フォーカスのときだけ露出させる。
    *
@@ -67,7 +76,13 @@ export function SelectableTaskRow({ card, isSelected, onToggle, onOpen, onDelete
       <div
         className={`transition-transform duration-200 ease-out motion-reduce:transition-none ${reveal}`}
       >
-        <TaskCard card={card} isDone onOpen={onOpen} onDelete={onDelete} />
+        <TaskCard
+          card={card}
+          isDone
+          isDragDisabled={isDragDisabled}
+          onOpen={onOpen}
+          onDelete={onDelete}
+        />
       </div>
     </div>
   )

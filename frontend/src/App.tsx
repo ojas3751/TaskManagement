@@ -22,7 +22,12 @@ import {
   withoutCards,
   withoutList,
 } from './lib/boardEdit'
-import { toCardIdsForAppend, withMovedCard } from './lib/moveCard'
+import {
+  toCardIdsForAppend,
+  toCardIdsForInsert,
+  withMovedCard,
+  withReorderedCard,
+} from './lib/moveCard'
 import { withListOrder, withSwappedList } from './lib/reorderLists'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
@@ -474,6 +479,51 @@ export default function App() {
   )
 
   /**
+   * タスクをドラッグ&ドロップで移動する（F-13）。
+   *
+   * 送り先は F-23 と**同じ `PATCH /api/cards/move`。** 「タスクを別リストの指定位置へ
+   * 移す」という操作は入力手段が違うだけで同一であり、分けると再採番のロジックが
+   * 二重化する（api.md 2.1）。違うのは `to_card_ids` の組み立て方だけで、
+   * F-23 は末尾に足し、こちらは落とした位置に挿す。
+   *
+   * 失敗したときは移動前の盤面へ戻す。**position は 2 つの列にまたがって変わる**ので、
+   * handleMoveList と同じく盤面ごと控える。
+   */
+  const handleMoveCard = useCallback(
+    (cardId: string, toListId: string, toIndex: number) => {
+      if (state.status !== 'ready' || isBusy) return
+
+      const before = state.board
+      const fromListId = findListOfCard(before, cardId)?.id
+      if (!fromListId) return
+
+      // 送る配列は**移動前の盤面**から作る。画面へ反映したあとの盤面から作っても同じに
+      // なるが、送る内容と控えた内容の出どころを 1 つに揃えておく
+      const toCardIds = toCardIdsForInsert(before, cardId, toListId, toIndex)
+
+      setActionError(null)
+      setState({ status: 'ready', board: withReorderedCard(before, cardId, toListId, toIndex) })
+
+      setPending((n) => n + 1)
+      moveCard({
+        card_id: cardId,
+        from_list_id: fromListId,
+        to_list_id: toListId,
+        to_card_ids: toCardIds,
+      })
+        .then(
+          (board) => setState({ status: 'ready', board }),
+          (cause: unknown) => {
+            setActionError(toActionMessage(cause))
+            setState({ status: 'ready', board: before })
+          },
+        )
+        .finally(() => setPending((n) => n - 1))
+    },
+    [state, isBusy],
+  )
+
+  /**
    * タスクを削除する（F-08）。
    *
    * 画面からは取り除くだけで、position は詰め直さない（withoutCard 参照）。
@@ -606,10 +656,14 @@ export default function App() {
         </div>
       )}
 
-      {/* エラーの role="alert" と違い status にする。読み上げが操作を遮らない */}
+      {/* エラーの role="alert" と違い status にする。読み上げが操作を遮らない。
+          **名前を付けてあるのは、role="status" がこの画面に 2 つあるため。**
+          もう 1 つは dnd-kit がドラッグの進行を読み上げるために置く領域（F-13）で、
+          そちらには名前が無い。名前で区別できないと、待機表示だけを取り出せない */}
       {waitPhase !== 'idle' && (
         <div
           role="status"
+          aria-label="通信の状態"
           className="mx-5 mt-4 flex shrink-0 items-center gap-2 rounded-card border border-line bg-surface px-3 py-2"
         >
           <span
@@ -668,6 +722,9 @@ export default function App() {
               onOpenCard={setOpenCardId}
               onDeleteCard={setDeletingCardId}
               onBulkDeleteCards={setBulkDeletingCardIds}
+              onMoveCard={handleMoveCard}
+              // 応答待ちの間は盤面が inert なので掴めないが、dnd-kit 側にも伝えておく
+              isDragDisabled={isBusy}
             />
           </div>
         )}

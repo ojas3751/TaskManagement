@@ -1,3 +1,4 @@
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useState } from 'react'
 import type { TaskList } from '../api/types'
 import { NameInputModal } from './NameInputModal'
@@ -17,6 +18,8 @@ type Props = {
   onDeleteCard: (cardId: string) => void
   /** 選択したタスクをまとめて削除する（F-15）。確認モーダルは App が出す */
   onBulkDeleteCards: (cardIds: string[]) => void
+  /** 応答待ちの間はタスクを掴ませない（F-13）。他の操作と同じ扱い */
+  isDragDisabled: boolean
 }
 
 /**
@@ -111,6 +114,7 @@ export function ListColumn({
   onOpenCard,
   onDeleteCard,
   onBulkDeleteCards,
+  isDragDisabled,
 }: Props) {
   // 開閉は列ごとに独立していて他と共有する必要がないので、ここで持つ。
   // リストの詳細モーダルは App が持つ（削除の確認モーダルへ続くため）
@@ -314,32 +318,42 @@ export function ListColumn({
           太く、列の内側をはっきり削る。scrollbar-width は Tailwind のユーティリティに
           無いので、プロパティを直接指定する */}
       <div className="flex min-h-0 flex-col gap-2 overflow-x-hidden overflow-y-auto [scrollbar-width:thin]">
-        {cards.length === 0 ? (
-          <p className="m-0 py-4 text-center text-ink-sub">（タスクなし）</p>
-        ) : (
-          cards.map((card) =>
-            isSelectable ? (
-              <SelectableTaskRow
-                key={card.id}
-                card={card}
-                isSelected={selectedIds.has(card.id)}
-                onToggle={toggle}
-                onOpen={onOpenCard}
-                onDelete={onDeleteCard}
-              />
-            ) : (
-              <TaskCard
-                key={card.id}
-                card={card}
-                // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
-                // 改名（F-03, Step 9）できるようになった時点で壊れる
-                isDone={list.is_fixed_last}
-                onOpen={onOpenCard}
-                onDelete={onDeleteCard}
-              />
-            ),
-          )
-        )}
+        {/* 並び替えの範囲はこの列の中（F-13）。**items には表示順どおりの id を渡す。**
+            dnd-kit はこの配列の添字で「何番目に落ちるか」を決めるので、position の
+            昇順に並べた cards から作る必要がある */}
+        <SortableContext
+          items={cards.map((card) => card.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {cards.length === 0 ? (
+            <p className="m-0 py-4 text-center text-ink-sub">（タスクなし）</p>
+          ) : (
+            cards.map((card) =>
+              isSelectable ? (
+                <SelectableTaskRow
+                  key={card.id}
+                  card={card}
+                  isSelected={selectedIds.has(card.id)}
+                  isDragDisabled={isDragDisabled}
+                  onToggle={toggle}
+                  onOpen={onOpenCard}
+                  onDelete={onDeleteCard}
+                />
+              ) : (
+                <TaskCard
+                  key={card.id}
+                  card={card}
+                  // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
+                  // 改名（F-03, Step 9）できるようになった時点で壊れる
+                  isDone={list.is_fixed_last}
+                  isDragDisabled={isDragDisabled}
+                  onOpen={onOpenCard}
+                  onDelete={onDeleteCard}
+                />
+              ),
+            )
+          )}
+        </SortableContext>
       </div>
 
 
