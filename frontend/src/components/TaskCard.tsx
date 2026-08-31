@@ -1,5 +1,5 @@
 import { useSortable } from '@dnd-kit/sortable'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, KeyboardEvent } from 'react'
 import type { Card } from '../api/types'
 import { dueStatus } from '../lib/dueStatus'
 import { formatDueAt } from '../lib/formatDueAt'
@@ -117,6 +117,14 @@ function TaskCardView({
   // 「完了」列に在ることだけを条件に上書きする。差し戻せば色分けが復活する
   const style = isDone ? CARD_STYLES.done : CARD_STYLES[dueStatus(card)]
 
+  /**
+   * dnd-kit がカードに付けるキー操作（F-13）。**上書きせずに、後ろに自分の処理を足す。**
+   *
+   * `dragProps` を展開してから `onKeyDown` を書くと、**dnd-kit のものが消えて掴めなくなる。**
+   * 逆に前に書くと自分のものが消える。順に呼ぶ形にして、どちらも生かす。
+   */
+  const dragKeyDown = dragProps?.onKeyDown as ((event: KeyboardEvent<HTMLElement>) => void) | undefined
+
   return (
     // 幅は 240px 固定で、列の中では中央に置く（F-15）。列の内側 280px との差 40px が
     // 左右 20px ずつの余白になり、完了列でチェックボックスを出すときの寄り代になる。
@@ -124,30 +132,46 @@ function TaskCardView({
     <article
       ref={dragRef}
       {...dragProps}
+      /* **詳細を開く操作はカード全体で受ける**（F-07、#95）。
+       *
+       * 以前はタイトルだけを `<button>` にしていた。**カードそのものが既にボタンだった**
+       * ため（dnd-kit が `role="button"` と `tabIndex` を付ける）、**タスク1件につき
+       * Tab の停留点が4つあり、うち2つは名前まで同じ**という状態になっていた。
+       * 20件の列なら80回。入れ子のボタンをやめて、カードで受ける形に寄せた。
+       *
+       * **ドラッグとは競合しない。** `PointerSensor` に 5px のしきい値があるので、
+       * 動かさずに離せばクリックとして扱われる（掴む仕掛けを入れた時点からの前提）。 */
+      onClick={() => onOpen(card.id)}
+      /* キーボードでは **`Enter` で開き、`Space` で掴む。** dnd-kit の既定では
+       * `Enter` も掴む側に割り当たっているので、そちらは `Space` だけに絞ってある
+       * （BoardView の KeyboardSensor）。
+       *
+       * **中のボタンから浮いてきた `Enter` は無視する。** ゴミ箱の上で押した `Enter` は
+       * 削除であって、詳細を開く操作ではない。 */
+      onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+        dragKeyDown?.(event)
+        if (event.key === 'Enter' && event.target === event.currentTarget) onOpen(card.id)
+      }}
       // transform / transition は値が実行時に決まるので、クラス名ではなく style で当てる。
       // Tailwind はソースを走査してクラスを生成するため、動く値はクラスにできない
       style={dragStyle}
-      className={`mx-auto w-60 touch-none rounded-card ${style.card} ${extraClassName}`}
+      className={`mx-auto w-60 cursor-pointer touch-none rounded-card ${style.card} ${extraClassName}`}
     >
-      {/* クリックできるのはタイトル部分（画面設計 4章）。カード全体をボタンにすると、
-          期限の行に置く削除アイコン（F-08, #26）がボタンの入れ子になってしまう */}
-      <h3 className="m-0 font-semibold">
-        <button
-          type="button"
-          onClick={() => onOpen(card.id)}
-          // 文字色はカードから継承する。赤背景では白、完了列では黒になる
-          className="w-full cursor-pointer border-0 bg-transparent p-0 text-left font-semibold text-current [overflow-wrap:anywhere] hover:underline"
-        >
-          {card.title}
-        </button>
-      </h3>
+      {/* タイトルはただの文字。**押せるのはカード全体**（上の onClick）なので、
+          ここにボタンを入れると停留点が二重になる */}
+      <h3 className="m-0 font-semibold [overflow-wrap:anywhere]">{card.title}</h3>
       {/* 期限が無くても行は残す。有無で高さが変わると縦の並びがばらつく。
           ゴミ箱アイコンはこの行の右端に常時表示する（画面設計 2章、F-08） */}
       <div className="mt-0.5 flex min-h-5 items-center justify-between gap-2">
         <p className={`m-0 text-xs tabular-nums ${style.due}`}>{due}</p>
         <button
           type="button"
-          onClick={() => onDelete(card.id)}
+          onClick={(event) => {
+            // **カードへ伝わらないように止める**（#95）。止めないと、削除の確認モーダルと
+            // 詳細モーダルが同時に開く（カード全体が詳細を開くようになったため）
+            event.stopPropagation()
+            onDelete(card.id)
+          }}
           aria-label={`「${card.title}」を削除`}
           // 色はカードの文字色に追従させる（F-08）。赤背景では白、完了列では黒になる。
           // 薄くしないのは、どの背景でもコントラストを確保するため。ホバーの手応えは

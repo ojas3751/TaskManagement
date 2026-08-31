@@ -496,6 +496,57 @@ describe('ホバーでの完了操作（F-22）', () => {
   })
 })
 
+describe('タスクを開く操作（F-07, #95）', () => {
+  /** タイトルの文字から、そのタスクのカード本体を取る */
+  const cardOf = (title: string) => screen.getByText(title).closest('article')!
+
+  it('カード全体のクリックで詳細が開く', async () => {
+    await renderBoard()
+
+    // 以前はタイトルだけが押せた。カードそのものが既にボタンだったため、停留点が
+    // 二重になっていた（C-1）
+    fireEvent.click(cardOf('牛乳を買う'))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('タスクの詳細')
+  })
+
+  it('Enter でも開く', async () => {
+    await renderBoard()
+
+    fireEvent.keyDown(cardOf('牛乳を買う'), { key: 'Enter' })
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('ゴミ箱を押しても詳細は開かない', async () => {
+    await renderBoard()
+
+    // 止めていないと、削除の確認と詳細が同時に開く
+    fireEvent.click(screen.getByRole('button', { name: '「牛乳を買う」を削除' }))
+
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('削除します')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('タスク1件あたりの Tab の停留点は3つ', async () => {
+    await renderBoard()
+
+    // チェックボックスはカードの外側にある（CheckableTaskRow）。1行ぶんを取るには
+    // カードの2つ上まで遡る
+    const row = cardOf('牛乳を買う').parentElement!.parentElement!
+    const tabbable = row.querySelectorAll(
+      'button, input, [tabindex]:not([tabindex="-1"])',
+    )
+
+    // チェックボックス（F-15 / F-22）・カード本体・ゴミ箱の3つ。
+    // **タイトルのボタンを無くした分が減っている**（4つ → 3つ）
+    expect(tabbable).toHaveLength(3)
+
+    // 同じ名前が2度読み上げられることも無くなった
+    expect(screen.queryAllByRole('button', { name: '牛乳を買う' })).toHaveLength(1)
+  })
+})
+
 describe('リストの編集モード（F-24）', () => {
   /** モード外の盤面に、リストへの入口が1つも出ていないこと */
   const expectNoListEntries = () => {

@@ -120,6 +120,17 @@ export function BoardView({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, {
+      /**
+       * **掴む・置くは `Space` だけにする**（#95）。
+       *
+       * dnd-kit の既定では `Enter` も割り当たっているが、**`Enter` は詳細を開く操作
+       * （F-07）に使う。** 以前はタイトルを `<button>` にして開いていたので衝突しなかったが、
+       * カード全体で受けるようにした結果、同じキーの取り合いになった。
+       *
+       * `Escape` の取り消しは既定のまま。掴んでいる間の `Esc` は移動の取り消しで、
+       * 編集モードから抜ける `Esc`（App）とはこの順で棲み分ける。
+       */
+      keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space'] },
       // **列を動かすときだけ、座標の求め方を差し替える**（F-21）。dnd-kit の既定は
       // 「次の受け口の矩形へ飛ばす」作りで、**中身なりの高さで形が揃わない列では
       // 縦方向の移動が混ざる**（listDropTarget.ts の createListKeyboardCoordinateGetter）
