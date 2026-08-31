@@ -9,6 +9,7 @@ import {
   deleteCard,
   deleteList,
   fetchBoard,
+  moveCard,
   reorderLists,
   updateList,
 } from './api/board'
@@ -105,6 +106,18 @@ const boardWithAddedList: Board = {
       cards: [],
     },
     board.lists[1],
+  ],
+}
+
+/** 完了列に3件入った盤面。F-15（選択削除）と F-22（完了操作）の両方で使う */
+const withDoneCards: Board = {
+  ...board,
+  lists: [
+    board.lists[0],
+    {
+      ...board.lists[1],
+      cards: [card('d1', '済んだ1', 0), card('d2', '済んだ2', 1), card('d3', '済んだ3', 2)],
+    },
   ],
 }
 
@@ -377,6 +390,94 @@ describe('リストの並び替え（F-05）', () => {
   })
 })
 
+describe('ホバーでの完了操作（F-22）', () => {
+  /** 「完了にする」のチェックを入れる */
+  function complete(title: string) {
+    fireEvent.click(screen.getByRole('checkbox', { name: `「${title}」を完了にする` }))
+  }
+
+  it('完了列以外のタスクに出て、完了列のタスクには出ない', async () => {
+    await renderBoard(withDoneCards)
+
+    expect(screen.getByRole('checkbox', { name: '「牛乳を買う」を完了にする' })).toBeInTheDocument()
+    // 完了列のチェックは「選択」（F-15）のまま。完了列から完了へは移せない
+    expect(
+      screen.queryByRole('checkbox', { name: '「済んだ1」を完了にする' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('チェックすると、応答を待たずに完了列の先頭へ移る', async () => {
+    await renderBoard()
+    const pending = deferred<Board>()
+    vi.mocked(moveCard).mockReturnValue(pending.promise)
+
+    complete('請求書を出す')
+
+    // F-06（追加は列の先頭）と揃える。完了列が長くてもスクロールせずに結果が見える
+    expect(titlesIn('完了')).toEqual(['請求書を出す'])
+    expect(titlesIn('TODO')).toEqual(['牛乳を買う', '本を返す'])
+    // 送り先は F-13 / F-23 と同じ。先頭に挿すので to_card_ids の先頭に入る
+    expect(moveCard).toHaveBeenCalledWith({
+      card_id: 'b',
+      from_list_id: 'todo',
+      to_list_id: 'done',
+      to_card_ids: ['b'],
+    })
+
+    await act(async () => {
+      pending.resolve(board)
+    })
+  })
+
+  it('既にタスクが入っている完了列でも、先頭に入る', async () => {
+    await renderBoard(withDoneCards)
+    const pending = deferred<Board>()
+    vi.mocked(moveCard).mockReturnValue(pending.promise)
+
+    complete('牛乳を買う')
+
+    expect(titlesIn('完了')).toEqual(['牛乳を買う', '済んだ1', '済んだ2', '済んだ3'])
+    // 末尾に足すのではなく先頭に挿す。ここが F-23（末尾に足す）との違い
+    expect(moveCard).toHaveBeenCalledWith(
+      expect.objectContaining({ to_card_ids: ['a', 'd1', 'd2', 'd3'] }),
+    )
+
+    await act(async () => {
+      pending.resolve(withDoneCards)
+    })
+  })
+
+  it('移動に失敗したら、元の列の元の位置に戻る', async () => {
+    await renderBoard()
+    vi.mocked(moveCard).mockRejectedValue(dbDown)
+
+    complete('請求書を出す')
+    expect(titlesIn('完了')).toEqual(['請求書を出す'])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('データベースに接続できません。')
+    // 間に戻る。position を詰め直していないので末尾ではない
+    expect(titlesIn('TODO')).toEqual(['牛乳を買う', '請求書を出す', '本を返す'])
+    expect(titlesIn('完了')).toEqual([])
+  })
+
+  it('応答待ちの間は押しても飛ばない', async () => {
+    await renderBoard()
+    const pending = deferred<Board>()
+    vi.mocked(createCard).mockReturnValue(pending.promise)
+
+    addTask('新しいタスク')
+    // 実際のブラウザでは disabled と inert が押下を止める。jsdom では
+    // 「押せてしまっても、リクエストは飛ばない」ことを確かめる
+    complete('牛乳を買う')
+
+    expect(moveCard).not.toHaveBeenCalled()
+
+    await act(async () => {
+      pending.resolve(board)
+    })
+  })
+})
+
 describe('タスク追加の置き場所（#20）', () => {
   it('完了列には出さないが、それ以外の列には出す', async () => {
     await renderBoard(boardWithAddedList)
@@ -390,30 +491,21 @@ describe('タスク追加の置き場所（#20）', () => {
 })
 
 describe('完了列の選択削除（F-15）', () => {
-  /** 完了列に3件入った盤面 */
-  const withDone: Board = {
-    ...board,
-    lists: [
-      board.lists[0],
-      {
-        ...board.lists[1],
-        cards: [card('d1', '済んだ1', 0), card('d2', '済んだ2', 1), card('d3', '済んだ3', 2)],
-      },
-    ],
-  }
+  const withDone = withDoneCards
 
   /** タスクのチェックボックスを操作する */
   function check(title: string) {
     fireEvent.click(screen.getByRole('checkbox', { name: `「${title}」を選択` }))
   }
 
-  it('チェックボックスは完了列にだけ出る', async () => {
+  it('選択のチェックボックスは完了列にだけ出る', async () => {
     await renderBoard(withDone)
 
-    // 完了列の3件ぶんだけ。TODO の3件には出ない
-    expect(screen.getAllByRole('checkbox')).toHaveLength(3)
+    // F-22 でどの列にもチェックボックスが出るようになったので、数ではなく
+    // **意味**で見る。完了列のものだけが「選択」で、他の列は「完了にする」
     expect(screen.getByRole('checkbox', { name: '「済んだ1」を選択' })).toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: '「牛乳を買う」を選択' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /「済んだ1」を完了にする/ })).not.toBeInTheDocument()
   })
 
   it('何も選んでいなくても選択の行は出るが、押せない', async () => {

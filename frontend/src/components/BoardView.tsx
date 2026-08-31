@@ -145,6 +145,25 @@ export function BoardView({
     onMoveCard(cardId, target.listId, target.index)
   }
 
+  /**
+   * ホバーでの完了操作（F-22）。**「完了」列の先頭へ移す。**
+   *
+   * 先頭にするのは F-06（追加したタスクは列の先頭に入る）と揃えるため。完了列が長くても、
+   * スクロールせずに「いま完了にしたもの」が見える。
+   *
+   * **移動そのものは F-13 と同じ `onMoveCard` に流す。** 行き先が1つに決まっている
+   * ぶん近道になっているだけで、やっていることは同じ移動であり、送り先も同じ
+   * `PATCH /api/cards/move`（api.md 2.1）。
+   *
+   * 完了列がどれかを知っているのは並びを持つここだけなので、列には渡さず解決してから渡す。
+   */
+  const handleCompleteCard = (cardId: string) => {
+    const done = lists.find((list) => list.is_fixed_last)
+    if (!done) return
+
+    onMoveCard(cardId, done.id, 0)
+  }
+
   return (
     <DndContext
       sensors={sensors}
@@ -177,6 +196,7 @@ export function BoardView({
           onOpenCard={onOpenCard}
           onDeleteCard={onDeleteCard}
           onBulkDeleteCards={onBulkDeleteCards}
+          onCompleteCard={handleCompleteCard}
           isDragDisabled={isDragDisabled}
           draggingCardId={dragging?.cardId ?? null}
           // 線を出すのは落ち先の列だけ。他の列には出さない

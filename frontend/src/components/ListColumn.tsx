@@ -4,8 +4,7 @@ import { Fragment, useState } from 'react'
 import type { TaskList } from '../api/types'
 import { toListDroppableId } from '../lib/dropTarget'
 import { NameInputModal } from './NameInputModal'
-import { SelectableTaskRow } from './SelectableTaskRow'
-import { TaskCard } from './TaskCard'
+import { CheckableTaskRow } from './CheckableTaskRow'
 
 type Props = {
   list: TaskList
@@ -20,6 +19,13 @@ type Props = {
   onDeleteCard: (cardId: string) => void
   /** 選択したタスクをまとめて削除する（F-15）。確認モーダルは App が出す */
   onBulkDeleteCards: (cardIds: string[]) => void
+  /**
+   * タスクを「完了」列へ移す（F-22）。完了列そのものでは使わない。
+   *
+   * 行き先の列も入れる位置も呼ばれる側（BoardView）が決めるので、渡すのは id だけ。
+   * 列は自分がどこにあるかも、完了列がどれかも知らない
+   */
+  onCompleteCard: (cardId: string) => void
   /** 応答待ちの間はタスクを掴ませない（F-13）。他の操作と同じ扱い */
   isDragDisabled: boolean
   /** いま掴まれているタスク。掴んでいなければ null */
@@ -147,6 +153,7 @@ export function ListColumn({
   onOpenCard,
   onDeleteCard,
   onBulkDeleteCards,
+  onCompleteCard,
   isDragDisabled,
   draggingCardId,
   dropIndex,
@@ -409,26 +416,25 @@ export function ListColumn({
             cards.map((card) => (
               <Fragment key={card.id}>
                 {beforeCardId === card.id && <InsertionLine />}
-                {isSelectable ? (
-                  <SelectableTaskRow
-                    card={card}
-                    isSelected={selectedIds.has(card.id)}
-                    isDragDisabled={isDragDisabled}
-                    onToggle={toggle}
-                    onOpen={onOpenCard}
-                    onDelete={onDeleteCard}
-                  />
-                ) : (
-                  <TaskCard
-                    card={card}
-                    // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
-                    // 改名（F-03, Step 9）できるようになった時点で壊れる
-                    isDone={list.is_fixed_last}
-                    isDragDisabled={isDragDisabled}
-                    onOpen={onOpenCard}
-                    onDelete={onDeleteCard}
-                  />
-                )}
+                {/* **どの列のタスクにもチェックボックスを出す。見せ方は同じで、意味だけが
+                    列によって違う。** 完了列では選択（F-15）、それ以外では完了にする（F-22）。
+                    作法が列ごとに変わると、同じ盤面の中で操作の予測が立たなくなる */}
+                <CheckableTaskRow
+                  card={card}
+                  // 「完了」列かどうかは is_fixed_last で判定する。列名で見ると、
+                  // 改名（F-03, Step 9）できるようになった時点で壊れる
+                  isDone={list.is_fixed_last}
+                  // **完了にするチェックは入ったままにならない。** 押した瞬間にタスクが
+                  // 完了列へ移り、この行自体が消えるため（F-22）
+                  isChecked={isSelectable && selectedIds.has(card.id)}
+                  checkboxLabel={
+                    isSelectable ? `「${card.title}」を選択` : `「${card.title}」を完了にする`
+                  }
+                  isDragDisabled={isDragDisabled}
+                  onCheck={isSelectable ? toggle : (cardId) => onCompleteCard(cardId)}
+                  onOpen={onOpenCard}
+                  onDelete={onDeleteCard}
+                />
               </Fragment>
             ))
           )}
