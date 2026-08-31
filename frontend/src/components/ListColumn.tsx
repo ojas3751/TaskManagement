@@ -130,8 +130,8 @@ function ArrowButton({
 /**
  * 列（画面設計 1章）。
  *
- * 並び替えの矢印・見出し・[+ タスク追加]・タスクの一覧を出す。
- * 完了列のチェックボックス（F-15）はまだ置かない。
+ * 並び替えの矢印・見出し・タスクの一覧を出す。見出しの下の1行は列によって中身が変わり、
+ * **完了列は選択の行（F-15）、それ以外は [+ タスク追加]**（#20）。
  *
  * **スクロールするのはタスクの一覧だけ（F-25）。** 矢印・リスト名・[+ タスク追加] は
  * その外に置くので、どれだけスクロールしても隠れない。**これが F-25 の目的そのもの**で、
@@ -297,22 +297,27 @@ export function ListColumn({
         {!list.is_default && <span aria-hidden="true" className="h-5 w-3.5 shrink-0" />}
       </div>
 
-      {/* 1件でも選ばれていたら、[+ タスク追加] と**入れ替えて**全選択の行を出す（F-15）。
+      {/* 見出しの下の1行。**完了列は選択の行、それ以外は [＋ タスク追加]**（#20）。
 
-          **足すのではなく入れ替えるのは、高さを変えないため。** 行を増やすと完了列だけ
-          タスクの先頭が1行ぶん下がり、横に並べたときに揃わなくなる。編集アイコン（v1.4）と
-          並び替えの行（v1.6）で2回避けてきた問題と同じ。
+          **完了列に [＋ タスク追加] を出さない理由。** 実際のタスク管理では、完了に
+          直接タスクを起票する場面がほぼ無い。完了へ入れる手段はドラッグ&ドロップ（F-13）と
+          詳細モーダルのリスト選択欄（F-23）があるので、消しても行き止まりにならない。
 
-          **1件も選んでいないと出ない**のは意図的。全件削除が確認モーダル1枚で到達できる
-          より、まず1件チェックさせる方が誤操作を抑えられる。完了列の [+ タスク追加] は
-          #20 でいずれ消える予定なので、入れ替えても違和感が出にくい */}
-      {selected.length > 0 ? (
+          **消すのは完了列だけで、「進行中」や追加した列には出したままにする。**
+          Issue #20 は当初「進行中」も対象にしていたが、取りやめた。**完了列以外は
+          「そこへ直接起票したいか」の判断がブラッシュアップ案（F-22 のホバーでの完了操作
+          など）の前提と混ざり、いまは決められないため。**
+
+          **選択の行は、1件も選んでいなくても出す。** 出し分けにすると完了列だけこの行が
+          消えて、タスクの先頭が1行ぶん上がる。編集アイコン（v1.4）・並び替えの行（v1.6）と
+          同じ問題で、横に並べたときに列ごとの基準がずれる。**0件のときは押せない状態に
+          しておく**ので、チェックせずに全件消せるようにはならない */}
+      {isSelectable ? (
         /* 選択に関わる操作は**この1行にまとめる**。列の上下に散らすと、選択してから
            削除するまでの視線が縦に往復する。並びは「広げる → 取り消す → 実行する」の順。
 
            **枠と余白は [＋ タスク追加] と同じにする**（border 1px ＋ px-2 py-1）。
-           入れ替わる相手と高さが違うと、チェックを入れた瞬間に列の中身が上下にずれて
-           がたつく。**入れ替えにした意味が無くなる**ので、ここは必ず揃える。
+           他の列と高さが違うと、完了列だけタスクの先頭がずれる。
 
            幅は中身なりにして両端へ寄せる。等分にすると、件数が3桁になったときに
            「200件を削除」が収まらない */
@@ -320,14 +325,17 @@ export function ListColumn({
           <button
             type="button"
             onClick={() => setSelectedIds(new Set(cards.map((card) => card.id)))}
-            className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 whitespace-nowrap text-ink-sub hover:text-ink"
+            // 広げる先が無いときは押せない。0件の列で押しても何も起きないため
+            disabled={cards.length === 0}
+            className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 whitespace-nowrap text-ink-sub hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:text-ink-sub"
           >
             全選択
           </button>
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
-            className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 whitespace-nowrap text-ink-sub hover:text-ink"
+            disabled={selected.length === 0}
+            className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 whitespace-nowrap text-ink-sub hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:text-ink-sub"
           >
             選択解除
           </button>
@@ -338,9 +346,12 @@ export function ListColumn({
               // 送った内容は App が持っている。列が覚えておく必要はない
               setSelectedIds(new Set())
             }}
+            // **0件では押せない。** 確認モーダル1枚で全件削除に到達できるより、
+            // まず1件チェックさせる方が誤操作を抑えられる（F-15 からの方針）
+            disabled={selected.length === 0}
             // danger は白文字とのコントラスト 6.0:1（index.css）。ConfirmModal の
             // 「削除する」と同じ扱いで、取り消せない操作であることを色でも示す
-            className="cursor-pointer rounded-card border border-danger bg-surface px-2 py-1 whitespace-nowrap text-danger hover:bg-danger hover:text-danger-ink"
+            className="cursor-pointer rounded-card border border-danger bg-surface px-2 py-1 whitespace-nowrap text-danger hover:bg-danger hover:text-danger-ink disabled:cursor-default disabled:opacity-40 disabled:hover:bg-surface disabled:hover:text-danger"
           >
             {selected.length}件を削除
           </button>

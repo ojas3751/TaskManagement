@@ -377,6 +377,18 @@ describe('リストの並び替え（F-05）', () => {
   })
 })
 
+describe('タスク追加の置き場所（#20）', () => {
+  it('完了列には出さないが、それ以外の列には出す', async () => {
+    await renderBoard(boardWithAddedList)
+
+    // TODO と「設計」の2つ。完了列には無い
+    expect(screen.getAllByRole('button', { name: '＋ タスク追加' })).toHaveLength(2)
+
+    const done = screen.getByRole('heading', { name: '完了' }).closest('section')
+    expect(done?.textContent).not.toContain('＋ タスク追加')
+  })
+})
+
 describe('完了列の選択削除（F-15）', () => {
   /** 完了列に3件入った盤面 */
   const withDone: Board = {
@@ -404,26 +416,29 @@ describe('完了列の選択削除（F-15）', () => {
     expect(screen.queryByRole('checkbox', { name: '「牛乳を買う」を選択' })).not.toBeInTheDocument()
   })
 
-  it('何も選んでいないうちは選択の行を出さない', async () => {
+  it('何も選んでいなくても選択の行は出るが、押せない', async () => {
     await renderBoard(withDone)
 
-    expect(screen.queryByRole('button', { name: /件を削除/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '全選択' })).not.toBeInTheDocument()
+    // 出し分けにすると完了列だけこの行が消え、タスクの先頭が1行ぶん上がる（#20）
+    expect(screen.getByRole('button', { name: '0件を削除' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '選択解除' })).toBeDisabled()
+    // 広げる先はあるので「全選択」は押せる
+    expect(screen.getByRole('button', { name: '全選択' })).toBeEnabled()
   })
 
-  it('1件でも選ぶと、タスク追加が選択の行に入れ替わる', async () => {
-    await renderBoard(withDone)
+  it('タスクが0件の完了列では「全選択」も押せない', async () => {
+    await renderBoard()
 
-    // 入れ替えなので、追加ボタンは TODO 列の分だけが残る
-    expect(screen.getAllByRole('button', { name: '＋ タスク追加' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: '全選択' })).toBeDisabled()
+  })
+
+  it('1件でも選ぶと、削除ボタンが押せるようになる', async () => {
+    await renderBoard(withDone)
 
     check('済んだ2')
 
-    // 高さを変えないための入れ替え。行を足すと完了列だけタスクの先頭が下がる
-    expect(screen.getAllByRole('button', { name: '＋ タスク追加' })).toHaveLength(1)
-    expect(screen.getByRole('button', { name: '全選択' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '選択解除' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '1件を削除' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '1件を削除' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '選択解除' })).toBeEnabled()
   })
 
   it('選んだ件数がラベルに出る', async () => {
@@ -450,8 +465,7 @@ describe('完了列の選択削除（F-15）', () => {
     check('済んだ2')
     fireEvent.click(screen.getByRole('button', { name: '選択解除' }))
 
-    expect(screen.queryByRole('button', { name: /件を削除/ })).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: '＋ タスク追加' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: '0件を削除' })).toBeDisabled()
   })
 
   it('確認モーダルに件数を出し、確認するまで消さない', async () => {
