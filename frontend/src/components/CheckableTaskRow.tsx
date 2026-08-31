@@ -11,6 +11,8 @@ type Props = {
   checkboxLabel: string
   /** 掴めなくするか（F-13）。TaskCard へ渡すのに加えて、チェックボックスも止める */
   isDragDisabled?: boolean
+  /** 盤面で何かを掴んでいる最中か（#97）。運んでいる間はどのカードの詳細も開かせない */
+  isDragActive?: boolean
   onCheck: (cardId: string, isChecked: boolean) => void
   onOpen: (cardId: string) => void
   onDelete: (cardId: string) => void
@@ -40,6 +42,7 @@ export function CheckableTaskRow({
   isChecked,
   checkboxLabel,
   isDragDisabled,
+  isDragActive,
   onCheck,
   onOpen,
   onDelete,
@@ -79,8 +82,12 @@ export function CheckableTaskRow({
         checked={isChecked}
         onChange={(e) => onCheck(card.id, e.target.checked)}
         // 応答待ちの間は他の操作と同じく止める。**飛んでいるリクエストが常に1本**で
-        // あることが、App の巻き戻しの前提になっている（#43）
-        disabled={isDragDisabled}
+        // あることが、App の巻き戻しの前提になっている（#43）。
+        //
+        // **運んでいる最中も止める**（#97）。移動の途中に別の更新が挟まると、
+        // 何がどこへ動いたのかが利用者にも追えなくなる。カードの方は
+        // pointer-events で止まるが、**チェックボックスはカードの外にある**
+        disabled={isDragDisabled || isDragActive}
         aria-label={checkboxLabel}
         // **left-0 にしない。** フォーカスの枠はチェックボックスの外側に描かれるため、
         // 左端に貼り付けるとその枠が列の外にはみ出し、スクロール領域に切り取られて
@@ -94,6 +101,7 @@ export function CheckableTaskRow({
           card={card}
           isDone={isDone}
           isDragDisabled={isDragDisabled}
+          isDragActive={isDragActive}
           onOpen={onOpen}
           onDelete={onDelete}
         />
@@ -101,3 +109,4 @@ export function CheckableTaskRow({
     </div>
   )
 }
+

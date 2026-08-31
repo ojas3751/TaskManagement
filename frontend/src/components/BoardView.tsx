@@ -9,10 +9,11 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { Fragment, useState } from 'react'
 import type { Board } from '../api/types'
 import {
+  createCardKeyboardCoordinateGetter,
   createDropCollisionDetection,
   isSamePlace,
   resolveDropTarget,
@@ -136,7 +137,7 @@ export function BoardView({
       // 縦方向の移動が混ざる**（listDropTarget.ts の createListKeyboardCoordinateGetter）
       coordinateGetter: isEditingLists
         ? createListKeyboardCoordinateGetter(board)
-        : sortableKeyboardCoordinates,
+        : createCardKeyboardCoordinateGetter(board),
     }),
   )
 
@@ -346,6 +347,9 @@ export function BoardView({
           // dnd-kit 側にも伝えておく（応答待ちのときと同じ扱い）
           isDragDisabled={isDragDisabled || isEditingLists}
           draggingCardId={dragging?.cardId ?? null}
+          // 運んでいる間は、どのカードの詳細も開かせない（#97）。キーボードで掴んで
+          // いるときはポインタが自由に動くので、掴んだカード以外を押せてしまう
+          isDragActive={dragging !== null || draggingListId !== null}
           // 線を出すのは落ち先の列だけ。他の列には出さない
           dropIndex={dropTarget?.listId === list.id ? dropTarget.index : null}
         />
@@ -364,8 +368,10 @@ export function BoardView({
         <button
           type="button"
           onClick={onStartAddList}
+          // 列を運んでいる最中は押せない（#97）。移動の途中に別の更新を挟ませない
+          disabled={draggingListId !== null}
           // 幅は列に合わせる（ListColumn の w-75 と同じ値にすること）
-          className="w-75 shrink-0 cursor-pointer rounded-card border border-dashed border-ink-sub bg-list-bg px-2 py-2 text-left text-ink-sub hover:text-ink"
+          className="w-75 shrink-0 cursor-pointer rounded-card border border-dashed border-ink-sub bg-list-bg px-2 py-2 text-left text-ink-sub hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:text-ink-sub"
         >
           ＋ リスト追加
         </button>
