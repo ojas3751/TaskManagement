@@ -136,8 +136,19 @@ function addTask(title: string) {
   fireEvent.click(screen.getByRole('button', { name: '追加' }))
 }
 
-/** 「＋ リスト追加」から列を足す（F-02） */
+/**
+ * リストの編集モードに入る（F-24）。
+ *
+ * **リストへの操作はすべてこの中にある**（機能仕様書 1.6）ので、追加・改名・削除・
+ * 並び替えを試す前には必ず通る。
+ */
+function enterListEditMode() {
+  fireEvent.click(screen.getByRole('button', { name: 'リストを編集する' }))
+}
+
+/** 「＋ リスト追加」から列を足す（F-02）。入口は編集モードの中にある */
 function addList(title: string) {
+  enterListEditMode()
   fireEvent.click(screen.getByRole('button', { name: '＋ リスト追加' }))
   fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: title } })
   fireEvent.click(screen.getByRole('button', { name: '追加' }))
@@ -145,6 +156,7 @@ function addList(title: string) {
 
 /** 追加した列の編集アイコンから、リストの詳細モーダルを開く（F-03, F-04） */
 function openListDetail(listTitle = '設計') {
+  enterListEditMode()
   fireEvent.click(screen.getByRole('button', { name: `「${listTitle}」の詳細` }))
 }
 
@@ -218,6 +230,7 @@ describe('リストの追加（F-02）', () => {
 describe('リストの改名（F-03）', () => {
   it('デフォルトの3列には編集アイコンを出さない', async () => {
     await renderBoard()
+    enterListEditMode()
 
     // 盤面には TODO と 完了 しかない。どちらも is_default
     expect(screen.queryByRole('button', { name: /の詳細/ })).not.toBeInTheDocument()
@@ -225,6 +238,7 @@ describe('リストの改名（F-03）', () => {
 
   it('追加した列にだけ編集アイコンを出す', async () => {
     await renderBoard(boardWithAddedList)
+    enterListEditMode()
 
     expect(screen.getAllByRole('button', { name: /の詳細/ })).toHaveLength(1)
     expect(screen.getByRole('button', { name: '「設計」の詳細' })).toBeInTheDocument()
@@ -345,6 +359,7 @@ describe('リストの削除（F-04）', () => {
 describe('リストの並び替え（F-05）', () => {
   it('完了列には矢印を出さないが、他の列には出す', async () => {
     await renderBoard(boardWithAddedList)
+    enterListEditMode()
 
     expect(screen.getByRole('button', { name: '「TODO」を右へ移動' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '「設計」を左へ移動' })).toBeInTheDocument()
@@ -353,6 +368,7 @@ describe('リストの並び替え（F-05）', () => {
 
   it('左端の左と、完了の左隣の右は押せない', async () => {
     await renderBoard(boardWithAddedList)
+    enterListEditMode()
 
     // 端では消さずに残す。消すと列によってボタンの数が変わり、見出しの位置がずれる
     expect(screen.getByRole('button', { name: '「TODO」を左へ移動' })).toBeDisabled()
@@ -366,6 +382,7 @@ describe('リストの並び替え（F-05）', () => {
     await renderBoard(boardWithAddedList)
     const pending = deferred<Board>()
     vi.mocked(reorderLists).mockReturnValue(pending.promise)
+    enterListEditMode()
 
     fireEvent.click(screen.getByRole('button', { name: '「設計」を左へ移動' }))
 
@@ -381,6 +398,7 @@ describe('リストの並び替え（F-05）', () => {
   it('並び替えに失敗したら、元の並びに戻る', async () => {
     await renderBoard(boardWithAddedList)
     vi.mocked(reorderLists).mockRejectedValue(dbDown)
+    enterListEditMode()
 
     fireEvent.click(screen.getByRole('button', { name: '「TODO」を右へ移動' }))
     expect(listTitles()).toEqual(['設計', 'TODO', '完了'])
@@ -475,6 +493,81 @@ describe('ホバーでの完了操作（F-22）', () => {
     await act(async () => {
       pending.resolve(board)
     })
+  })
+})
+
+describe('リストの編集モード（F-24）', () => {
+  /** モード外の盤面に、リストへの入口が1つも出ていないこと */
+  const expectNoListEntries = () => {
+    expect(screen.queryByRole('button', { name: /へ移動/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /の詳細/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '＋ リスト追加' })).not.toBeInTheDocument()
+  }
+
+  it('モード外では、リストへの入口をどれも出さない', async () => {
+    await renderBoard(boardWithAddedList)
+
+    // 盤面に残るのはリスト名とタスクだけ（機能仕様書 1.6）
+    expectNoListEntries()
+  })
+
+  it('モードに入ると3つとも出て、抜けると消える', async () => {
+    await renderBoard(boardWithAddedList)
+
+    enterListEditMode()
+    expect(screen.getByRole('button', { name: '「TODO」を右へ移動' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '「設計」の詳細' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '＋ リスト追加' })).toBeInTheDocument()
+
+    // 出入りは同じボタン。文言が入れ替わる
+    fireEvent.click(screen.getByRole('button', { name: 'リストの編集を終える' }))
+    expectNoListEntries()
+  })
+
+  it('Esc でモードを抜ける', async () => {
+    await renderBoard(boardWithAddedList)
+
+    enterListEditMode()
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.getByRole('button', { name: 'リストを編集する' })).toBeInTheDocument()
+    expectNoListEntries()
+  })
+
+  it('モーダルを開いている間の Esc では、モードを抜けない', async () => {
+    await renderBoard(boardWithAddedList)
+
+    // モーダルも Esc で閉じる作りなので、無条件に拾うと両方が閉じる
+    openListDetail()
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'リストの編集を終える' })).toBeInTheDocument()
+  })
+
+  it('モード中はタスクの操作を止める', async () => {
+    await renderBoard(boardWithAddedList)
+    enterListEditMode()
+
+    // タスクは見えたまま。どの列に何が入っているかを見ながら並べ替えられる
+    expect(screen.getByText('牛乳を買う')).toBeInTheDocument()
+
+    // [＋ タスク追加] と完了列の選択の行は、モード中はそもそも出さない
+    expect(screen.queryByRole('button', { name: '＋ タスク追加' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '全選択' })).not.toBeInTheDocument()
+
+    // カード・チェック・ゴミ箱は inert でまとめて外す。
+    // **jsdom は inert を再現しないので、要素が消えたことでは確かめられない。**
+    // 属性が付いていることと、その内側にタスクが入っていることまでを見る
+    const todo = screen.getByRole('heading', { name: 'TODO' }).closest('section')
+    const frozen = todo?.querySelector('[inert]')
+    expect(frozen).toHaveTextContent('牛乳を買う')
+
+    // dnd-kit にも伝わっていること（応答待ちのときと同じ扱い）
+    expect(frozen?.querySelector('[aria-roledescription="sortable"]')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
   })
 })
 

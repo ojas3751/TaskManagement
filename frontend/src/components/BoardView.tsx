@@ -19,12 +19,18 @@ import {
   type DropTarget,
 } from '../lib/dropTarget'
 import { ListColumn } from './ListColumn'
-import { NameInputModal } from './NameInputModal'
 import { TaskCardOverlay } from './TaskCard'
 
 type Props = {
   board: Board
-  onAddList: (title: string) => void
+  /**
+   * リストの編集モード（F-24）。**リストへの操作の入口を出すかどうかを決める。**
+   *
+   * モード中は逆に、タスクへの操作をすべて止める（機能仕様書 1.6）。
+   */
+  isEditingLists: boolean
+  /** リストの追加モーダルを開く（F-02）。モーダル自体は App が出す */
+  onStartAddList: () => void
   onOpenList: (listId: string) => void
   onMoveList: (listId: string, direction: -1 | 1) => void
   onAddCard: (listId: string, title: string) => void
@@ -50,7 +56,8 @@ type Props = {
  */
 export function BoardView({
   board,
-  onAddList,
+  isEditingLists,
+  onStartAddList,
   onOpenList,
   onMoveList,
   onAddCard,
@@ -60,9 +67,6 @@ export function BoardView({
   onMoveCard,
   isDragDisabled,
 }: Props) {
-  // 開閉はこの画面だけの状態なのでここで持つ（ListColumn の [+ タスク追加] と同じ）
-  const [isAdding, setIsAdding] = useState(false)
-
   const lists = [...board.lists].sort((a, b) => a.position - b.position)
 
   /**
@@ -190,6 +194,7 @@ export function BoardView({
           // その手前の列は右へ行けない。**サーバーも 409 で断る**が、押す前に分かる方がよい
           canMoveLeft={index > 0}
           canMoveRight={index < lists.length - 1 && !lists[index + 1].is_fixed_last}
+          isEditingLists={isEditingLists}
           onOpenList={onOpenList}
           onMoveList={onMoveList}
           onAddCard={onAddCard}
@@ -197,7 +202,9 @@ export function BoardView({
           onDeleteCard={onDeleteCard}
           onBulkDeleteCards={onBulkDeleteCards}
           onCompleteCard={handleCompleteCard}
-          isDragDisabled={isDragDisabled}
+          // 編集モード中はタスクを掴ませない（F-24）。列の inert でも触れなくなるが、
+          // dnd-kit 側にも伝えておく（応答待ちのときと同じ扱い）
+          isDragDisabled={isDragDisabled || isEditingLists}
           draggingCardId={dragging?.cardId ?? null}
           // 線を出すのは落ち先の列だけ。他の列には出さない
           dropIndex={dropTarget?.listId === list.id ? dropTarget.index : null}
@@ -206,28 +213,20 @@ export function BoardView({
 
       {/* 列の右端に置く（F-02）。画面設計 1章の図では盤面の下だが、列は横スクロール
           するので、下に置くとスクロール位置によって列との関係が読めなくなる。
-          点線にしている理由は [+ タスク追加] と同じ */}
-      <button
-        type="button"
-        onClick={() => setIsAdding(true)}
-        // 幅は列に合わせる（ListColumn の w-75 と同じ値にすること）
-        className="w-75 shrink-0 cursor-pointer rounded-card border border-dashed border-ink-sub bg-list-bg px-2 py-2 text-left text-ink-sub hover:text-ink"
-      >
-        ＋ リスト追加
-      </button>
+          点線にしている理由は [+ タスク追加] と同じ。
 
-      {isAdding && (
-        <NameInputModal
-          title="リストの追加"
-          label="リスト名"
-          maxLength={50}
-          submitLabel="追加"
-          onSubmit={(title) => {
-            setIsAdding(false)
-            onAddList(title)
-          }}
-          onCancel={() => setIsAdding(false)}
-        />
+          **出すのは編集モード中だけ**（画面設計 1.2）。ここだけモード外に残すと、
+          「リストへの操作はモードの中」という原則に例外が1つできる。列と同じ 300px を
+          常時使ってもいる。**デフォルトの3列は必ず在る**ので、行き止まりにはならない */}
+      {isEditingLists && (
+        <button
+          type="button"
+          onClick={onStartAddList}
+          // 幅は列に合わせる（ListColumn の w-75 と同じ値にすること）
+          className="w-75 shrink-0 cursor-pointer rounded-card border border-dashed border-ink-sub bg-list-bg px-2 py-2 text-left text-ink-sub hover:text-ink"
+        >
+          ＋ リスト追加
+        </button>
       )}
       </div>
 
