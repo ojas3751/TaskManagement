@@ -1,10 +1,12 @@
 import { useDroppable } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Fragment, useState } from 'react'
 import type { TaskList } from '../api/types'
 import { toListDroppableId } from '../lib/dropTarget'
+import { toColumnDraggableId } from '../lib/listDropTarget'
 import { NameInputModal } from './NameInputModal'
 import { CheckableTaskRow } from './CheckableTaskRow'
+import { InsertionLine } from './InsertionLine'
 
 type Props = {
   list: TaskList
@@ -44,28 +46,6 @@ type Props = {
    * 数え方を揃えてある。
    */
   dropIndex: number | null
-}
-
-/**
- * 挿入位置の線（画面設計 3章）。
- *
- * **どこに落ちるかを、指を離す前に見せる。** 落ちた場所が予想と違うと、利用者は毎回
- * 結果を確認してからやり直すことになる。
- *
- * 線だけで示し、カードは動かさない。dnd-kit の標準は「他のカードが動いて隙間が空く」だが、
- * **列をまたぐと効かない**（並び替えの範囲が列ごとに別々のため）。線なら同じ見せ方で
- * 両方を扱える。
- *
- * 高さのぶんだけ並びが動かないよう、**場所を取らずに描く**（h-0 と負のマージン）。
- * 線が出た瞬間にカードが 2px ずつ下へずれると、それ自体が落ち先の誤解を生む。
- */
-function InsertionLine() {
-  return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none -my-px h-0.5 rounded-full bg-ink"
-    />
-  )
 }
 
 /**
@@ -188,8 +168,39 @@ export function ListColumn({
    * 画面設計 3章の「（タスクなし）の領域全体が受け口になる」がこれにあたる。
    *
    * 件数のある列にも付ける。カードとカードの間や下の余白に落としたときの行き先になる。
+   *
+   * **編集モード中は登録から外す**（F-21）。モード中に落とせるのは列だけなので、受け口
+   * としては不要になる。**外さないと、キーボードで列を動かすときの移動先候補に混ざる。**
+   * この受け口は列の左上ではなくタスク一覧の領域にあるため、**掴んだ列が少し右下へ
+   * ずれたり、前の列の下端へ飛んだりする**（#93 で実際に起きた）。
    */
-  const { setNodeRef: setDropRef } = useDroppable({ id: toListDroppableId(list.id) })
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: toListDroppableId(list.id),
+    disabled: isEditingLists,
+  })
+
+  /**
+   * 列そのものを掴めるようにする（F-21）。**編集モード中だけ。**
+   *
+   * **掴む範囲は列全体で、専用のつまみは置かない。** モード中はタスクの領域を inert に
+   * してあるので、内側のカードやボタンと競合しない（機能仕様書 1.6）。
+   *
+   * **「完了」列は掴めない。** 常に最右に固定されているため（機能仕様書 1.1）。
+   * **ただし落ち先としては生かす** — 「完了の手前」が動かせる列の末尾を指す目印になる
+   * （listDropTarget.ts）。掴むのと落とすのを別々に切れるので、そこだけ分ける。
+   *
+   * `disabled` で切るのは、**フックを条件付きで呼べない**ため。モード外では、掴む対象にも
+   * 落ち先にもならない。
+   */
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setColumnRef,
+    isDragging,
+  } = useSortable({
+    id: toColumnDraggableId(list.id),
+    disabled: !isEditingLists ? true : { draggable: list.is_fixed_last, droppable: false },
+  })
 
   /**
    * 線をどのタスクの手前に引くか（F-13）。末尾に引く場合は null。
@@ -232,7 +243,18 @@ export function ListColumn({
        10px 前後を内側から取るため、284px では寄せたカードの右端が切れる（内側 264px −
        スクロールバー ≒ 254px に対して、カード 240px ＋ 左 24px が入らない）。
        カードを縮めずに列を広げるのは、幅より読みやすさを採る判断（#70）に合わせたもの */
-    <section className="flex max-h-full w-75 shrink-0 flex-col gap-2 self-start rounded-card bg-list-bg p-2.5">
+    /* 掴んでいる列は**透明にして場所だけ残す**（F-21）。追従する本体は DragOverlay が
+       盤面の外側に描くので、消さずに空けておかないと、掴んだ瞬間に盤面全体が詰まって動く。
+       タスクを掴んだときと同じ扱い（画面設計 3章）。
+
+       touch-none はタスクと同じ理由。掴んで動かす操作をブラウザのスクロールに取られない */
+    <section
+      ref={setColumnRef}
+      {...(isEditingLists && !list.is_fixed_last ? { ...attributes, ...listeners } : {})}
+      className={`flex max-h-full w-75 shrink-0 flex-col gap-2 self-start rounded-card bg-list-bg p-2.5 ${
+        isEditingLists && !list.is_fixed_last ? 'cursor-grab touch-none' : ''
+      } ${isDragging ? 'invisible' : ''}`}
+    >
       {/* 見出しの行。編集アイコンを左端に置き、リスト名はその右に置く。
 
           **見出しの下に置かないのは、列ごとにタスクの開始位置がずれるため。**
@@ -431,7 +453,17 @@ export function ListColumn({
       >
         {/* 並び替えの範囲はこの列の中（F-13）。**items には表示順どおりの id を渡す。**
             dnd-kit はこの配列の添字で「何番目に落ちるか」を決めるので、position の
-            昇順に並べた cards から作る必要がある */}
+            昇順に並べた cards から作る必要がある。
+
+            **この `SortableContext` が実際に担っているのは、キーボード操作の移動先計算と
+            id の管理だけ**（ブラッシュアップ案 C-2）。落ち先を線で示す方式にしたとき、
+            `useSortable` が返す `transform` を当てるのをやめたため、
+            **`verticalListSortingStrategy`（カードをずらす計算）は計算されるが誰も使わない。**
+            動作に害は無いが、**ここを読んで「カードが動く」と思わないこと。**
+
+            **列にも同じ形の `SortableContext` がある**（BoardView。F-21）。**役割は同じで、
+            向きが違うだけ** — あちらは横並びなので `horizontalListSortingStrategy`。
+            どちらも線で示し、掴んでいるもの以外は動かさない */}
         <SortableContext
           items={cards.map((card) => card.id)}
           strategy={verticalListSortingStrategy}
