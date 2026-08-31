@@ -12,6 +12,13 @@ type Props = {
   canMoveLeft: boolean
   /** 右へ動かせるか。完了列の左隣では false（完了より右へは行けない） */
   canMoveRight: boolean
+  /**
+   * リストの編集モード（F-24）。**この列で何を出すかが切り替わる。**
+   *
+   * モード中だけ `[←] [→]` と編集アイコンを出し、代わりに**タスクの領域を操作できなく
+   * する**。モード外の列に出るのは、リスト名とタスクだけになる（機能仕様書 1.6）。
+   */
+  isEditingLists: boolean
   onOpenList: (listId: string) => void
   onMoveList: (listId: string, direction: -1 | 1) => void
   onAddCard: (listId: string, title: string) => void
@@ -147,6 +154,7 @@ export function ListColumn({
   list,
   canMoveLeft,
   canMoveRight,
+  isEditingLists,
   onOpenList,
   onMoveList,
   onAddCard,
@@ -225,33 +233,6 @@ export function ListColumn({
        スクロールバー ≒ 254px に対して、カード 240px ＋ 左 24px が入らない）。
        カードを縮めずに列を広げるのは、幅より読みやすさを採る判断（#70）に合わせたもの */
     <section className="flex max-h-full w-75 shrink-0 flex-col gap-2 self-start rounded-card bg-list-bg p-2.5">
-      {/* 並び替えの行（F-05）。リスト名の**上**に置き、両端に寄せる。
-
-          見出しの行（リスト名の横）に入れないのは、**260px しかない列幅をリスト名と
-          奪い合い、名前が早く … で切れる**ため。上の行なら名前の幅は減らない。
-
-          **「完了」列にはボタンを出さないが、行の高さは空ける。** 出し分けで高さが
-          変わると、完了列だけタスクが1行ぶん上にずれ、編集アイコンで避けた
-          「列ごとにタスクの開始位置が違う」状態に戻る */}
-      <div className="flex h-5 items-center justify-between">
-        {!list.is_fixed_last && (
-          <>
-            <ArrowButton
-              direction={-1}
-              listTitle={list.title}
-              disabled={!canMoveLeft}
-              onClick={() => onMoveList(list.id, -1)}
-            />
-            <ArrowButton
-              direction={1}
-              listTitle={list.title}
-              disabled={!canMoveRight}
-              onClick={() => onMoveList(list.id, 1)}
-            />
-          </>
-        )}
-      </div>
-
       {/* 見出しの行。編集アイコンを左端に置き、リスト名はその右に置く。
 
           **見出しの下に置かないのは、列ごとにタスクの開始位置がずれるため。**
@@ -266,10 +247,29 @@ export function ListColumn({
           **切り詰めるのは見た目だけで、名前そのものは DOM に残る**（CSS による省略）。
           読み上げには全文が渡る */}
       <div className="flex h-5 items-center gap-1">
+        {/* 並び替えの矢印（F-05）。**編集モード中だけ、見出しの行に出す**（画面設計 1.2）。
+            「完了」は動かせないので出さない。
+
+            **以前はリスト名の上に専用の1行を常設していた。** 列幅をリスト名と奪い合わない
+            ようにするためで、そのために「完了列にはボタンを出さないが行の高さは空ける」
+            扱いも要った（v1.6）。**モード中しか出さないなら、どちらも要らない** —
+            リスト名が狭くなるのは並び替えている最中だけで、その間は名前より並びを見ている */}
+        {isEditingLists && !list.is_fixed_last && (
+          <ArrowButton
+            direction={-1}
+            listTitle={list.title}
+            disabled={!canMoveLeft}
+            onClick={() => onMoveList(list.id, -1)}
+          />
+        )}
+
         {/* 追加した列にだけ出す（画面設計 1章）。デフォルトの3列は改名できない。
             列名ではなく is_default で判定する。名前で見ると、改名した直後に
-            自分自身が判定から外れる */}
-        {!list.is_default && (
+            自分自身が判定から外れる。
+
+            **出すのは編集モード中だけ**（F-24）。改名も削除も頻度が低く、平時の見出しに
+            置いておく必要がない */}
+        {isEditingLists && !list.is_default && (
           <button
             type="button"
             onClick={() => onOpenList(list.id)}
@@ -300,8 +300,23 @@ export function ListColumn({
         </h2>
 
         {/* アイコンと同じ幅を右側にも空ける。片側だけに置くと、その分だけリスト名が
-            左に寄り、アイコンの無いデフォルト列と見出しの位置が揃わない */}
-        {!list.is_default && <span aria-hidden="true" className="h-5 w-3.5 shrink-0" />}
+            左に寄り、アイコンの無いデフォルト列と見出しの位置が揃わない。
+
+            **要るのは編集アイコンが出ているときだけ。** モード外では左に何も無いので、
+            空けるとかえって名前が左へ寄る。矢印は左右に1つずつ出るため釣り合っている */}
+        {isEditingLists && !list.is_default && (
+          <span aria-hidden="true" className="h-5 w-3.5 shrink-0" />
+        )}
+
+        {/* 右の矢印。左と対になるので、出す条件も同じ */}
+        {isEditingLists && !list.is_fixed_last && (
+          <ArrowButton
+            direction={1}
+            listTitle={list.title}
+            disabled={!canMoveRight}
+            onClick={() => onMoveList(list.id, 1)}
+          />
+        )}
       </div>
 
       {/* 見出しの下の1行。**完了列は選択の行、それ以外は [＋ タスク追加]**（#20）。
@@ -318,8 +333,12 @@ export function ListColumn({
           **選択の行は、1件も選んでいなくても出す。** 出し分けにすると完了列だけこの行が
           消えて、タスクの先頭が1行ぶん上がる。編集アイコン（v1.4）・並び替えの行（v1.6）と
           同じ問題で、横に並べたときに列ごとの基準がずれる。**0件のときは押せない状態に
-          しておく**ので、チェックせずに全件消せるようにはならない */}
-      {isSelectable ? (
+          しておく**ので、チェックせずに全件消せるようにはならない。
+
+          **編集モード中はどちらも出さない**（F-24）。この行はタスクへの操作なので、
+          モード中は押せない。押せないものを置いておくより、**リストを並べている間の
+          盤面をリスト名とタスクだけにする**方が、いま何をする時間かがはっきりする */}
+      {isEditingLists ? null : isSelectable ? (
         /* 選択に関わる操作は**この1行にまとめる**。列の上下に散らすと、選択してから
            削除するまでの視線が縦に往復する。並びは「広げる → 取り消す → 実行する」の順。
 
@@ -399,8 +418,15 @@ export function ListColumn({
           場所を取らずに描いている（InsertionLine）。そのぶん、線が先頭や末尾に出たときは
           この領域から 1px はみ出す。**はみ出せば縦のスクロールバーが出る**ため、
           線が収まるだけの余白を先に確保しておく。線が半分しか見えないのも同じ原因 */}
+      {/* **編集モード中はここを操作できなくする**（F-24）。列を掴む範囲が列全体なので、
+          内側のカード・チェック・ゴミ箱と「押したいのがどちらか」が決まらないため。
+
+          カードごとに disabled を配らず inert でまとめて外すのは、**キーボードの
+          フォーカスと支援技術からも外れる**ため（App の応答待ちと同じ扱い）。
+          **タスクは見えたまま**なので、どの列に何が入っているかは見ながら並べ替えられる */}
       <div
         ref={setDropRef}
+        inert={isEditingLists}
         className="flex min-h-0 flex-col gap-2 overflow-x-hidden overflow-y-auto py-px [scrollbar-width:thin]"
       >
         {/* 並び替えの範囲はこの列の中（F-13）。**items には表示順どおりの id を渡す。**

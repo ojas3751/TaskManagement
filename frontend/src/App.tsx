@@ -34,6 +34,7 @@ import { CardDetailModal, type CardDetailInput } from './components/CardDetailMo
 import { ConfirmModal } from './components/ConfirmModal'
 import { ListDetailModal } from './components/ListDetailModal'
 import { LoadError } from './components/LoadError'
+import { NameInputModal } from './components/NameInputModal'
 
 type LoadState =
   | { status: 'loading' }
@@ -132,6 +133,24 @@ export default function App() {
   const [openListId, setOpenListId] = useState<string | null>(null)
   // 削除の確認モーダルで対象にしているリスト
   const [deletingListId, setDeletingListId] = useState<string | null>(null)
+  /**
+   * リストの編集モード（F-24）。**リストに関する操作はすべてこの中にある。**
+   *
+   * 追加・改名・削除・並び替えのどれも、入口を出すのはモード中だけ。**モード外の盤面に
+   * 残るのはリスト名とタスクだけになる**（機能仕様書 1.6）。狙いは、頻度の低いリスト操作に
+   * 平時の画面を使わせないこと。
+   *
+   * **盤面ではなく App が持つ。** 出入りのボタンがヘッダーにあり、`Esc` も画面全体で拾うため。
+   */
+  const [isEditingLists, setIsEditingLists] = useState(false)
+  /**
+   * リストの追加モーダル（F-02）を開いているか。
+   *
+   * **列の `[+ タスク追加]` と違い、盤面ではなく App が持つ。** モード中の `Esc` を
+   * 「モードを抜ける」に使うため、**モーダルが開いているかを App が知っている必要がある**
+   * （下の useEffect を参照）。他のモーダルの状態もすべてここに揃っている
+   */
+  const [isAddingList, setIsAddingList] = useState(false)
   // 追加などの操作が失敗したときのメッセージ。LoadState とは別に持つ。
   // 一緒にしてしまうと、追加に失敗しただけで画面全体が LoadError に
   // 置き換わり、まだ読めていたはずの盤面まで消える
@@ -182,6 +201,40 @@ export default function App() {
       clearTimeout(checking)
     }
   }, [isBusy])
+
+  /**
+   * 開いているモーダルがあるか。**`Esc` の行き先を決めるために使う。**
+   *
+   * モーダルはどれも `Esc` で閉じる作りで、その待ち受けを `window` に置いている
+   * （NameInputModal など）。**モード中の `Esc` を無条件で拾うと、モーダルを閉じる
+   * つもりの `Esc` でモードまで抜けてしまう。**
+   *
+   * 列の `[+ タスク追加]` は数に入れなくてよい。モード中はその行を出しておらず、
+   * タスクの領域も操作できないため、開いていることがない。
+   */
+  const isModalOpen =
+    openCardId !== null ||
+    deletingCardId !== null ||
+    bulkDeletingCardIds !== null ||
+    openListId !== null ||
+    deletingListId !== null ||
+    isAddingList
+
+  /**
+   * `Esc` で編集モードを抜ける（F-24）。マウスでもキーボードでも出口を同じにする。
+   *
+   * **列を掴んでいる最中の `Esc` はここでは扱わない。** dnd-kit がその移動の取り消しに
+   * 使うため（画面設計 1.2）。掴んでいる間は dnd-kit 側が先に受け取る。
+   */
+  useEffect(() => {
+    if (!isEditingLists || isModalOpen) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsEditingLists(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isEditingLists, isModalOpen])
 
   /**
    * リストを追加する（F-02）。
@@ -633,10 +686,42 @@ export default function App() {
     <div className="flex h-screen flex-col">
       {/* 以下 3 つは shrink-0。付けないと、空きが足りないときに一緒に縮む。
           縮んでよいのは盤面（main）だけ */}
-      <header className="shrink-0 border-b border-line bg-surface px-5 py-3">
+      <header className="flex shrink-0 items-center gap-3 border-b border-line bg-surface px-5 py-3">
         <h1 className="m-0 text-lg font-bold">
           {state.status === 'ready' ? state.board.title : 'マイタスク'}
         </h1>
+
+        {/* 編集モードの出入り口（F-24）。**ボード見出しの横に置く**（画面設計 1.2）。
+            列ごとではなく盤面全体に効く操作なので、列の中には置けない。
+
+            **読み込めていない間は出さない。** 並べ替える列がまだ無い。
+
+            **同じボタンで出入りする。** 文言が入れ替わるので、いまどちらの状態かは
+            ボタン自体が示す。押した後にどうなるかを書く（「編集する」→「終える」） */}
+        {state.status === 'ready' && (
+          <button
+            type="button"
+            onClick={() => setIsEditingLists((prev) => !prev)}
+            // 押されている状態を支援技術へ伝える。見た目（枠と色）だけでは伝わらない
+            aria-pressed={isEditingLists}
+            className={`cursor-pointer rounded-card border px-2.5 py-1 ${
+              isEditingLists
+                ? 'border-primary bg-primary text-primary-ink hover:bg-[#094a8b]'
+                : 'border-line bg-surface text-ink-sub hover:text-ink'
+            }`}
+          >
+            {isEditingLists ? 'リストの編集を終える' : 'リストを編集する'}
+          </button>
+        )}
+
+        {/* モードに入ったこと自体も伝える（F-24）。**ボタンの `aria-pressed` は
+            そのボタンへ行かないと読めない**ので、盤面の作法が変わったことは別に伝える。
+            role="alert" ではなく status にするのは、読み上げが操作を遮らないため */}
+        {isEditingLists && (
+          <p role="status" className="m-0 text-ink-sub">
+            リストの編集中です。タスクの操作はできません。
+          </p>
+        )}
       </header>
 
       {actionError && (
@@ -715,7 +800,8 @@ export default function App() {
           >
             <BoardView
               board={state.board}
-              onAddList={handleAddList}
+              isEditingLists={isEditingLists}
+              onStartAddList={() => setIsAddingList(true)}
               onOpenList={setOpenListId}
               onMoveList={handleMoveList}
               onAddCard={handleAddCard}
@@ -729,6 +815,23 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* リストの追加（F-02）。**入口は編集モードの中**（機能仕様書 1.6）だが、
+          モーダルそのものは他のモーダルと同じくここで出す。`Esc` の行き先を決めるのに
+          開閉を知る必要があるため（isModalOpen 参照） */}
+      {isAddingList && (
+        <NameInputModal
+          title="リストの追加"
+          label="リスト名"
+          maxLength={50}
+          submitLabel="追加"
+          onSubmit={(title) => {
+            setIsAddingList(false)
+            handleAddList(title)
+          }}
+          onCancel={() => setIsAddingList(false)}
+        />
+      )}
 
       {openCard && openCardList && state.status === 'ready' && (
         <CardDetailModal
