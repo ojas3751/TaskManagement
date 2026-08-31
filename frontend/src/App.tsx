@@ -318,20 +318,24 @@ export default function App() {
   )
 
   /**
-   * リストを隣と入れ替える（F-05）。
+   * リストを並び替える（F-05 / F-21）。**並べ終わった id を受け取って送る。**
    *
-   * 失敗したときは並び替える前の盤面へ戻す。**position は 2 つの列にまたがって変わる**ので、
+   * `[←] [→]`（F-05）とドラッグ&ドロップ（F-21）で**入口は違うが、ここから先は同じ。**
+   * 「どう並べ替えるか」を求める役は呼び出し側（`withSwappedList` / `withMovedList`）が
+   * 持ち、ここは**結果の並びを画面へ描いて送るだけ**にしてある。タスクの移動で F-13 と
+   * F-23 を同じ `handleMoveCard` に流しているのと同じ形。
+   *
+   * 失敗したときは並び替える前の盤面へ戻す。**position は複数の列にまたがって変わる**ので、
    * 1 つの値ではなく盤面ごと控える。
    *
-   * 「完了より右へ行けない」は画面ではボタンを出さないことで表し、判断の正本はサーバー
+   * 「完了より右へ行けない」は画面では落とせないことで表し、判断の正本はサーバー
    * （409 FIXED_LAST_MUST_BE_LAST）に置く。
    */
-  const handleMoveList = useCallback(
-    (listId: string, direction: -1 | 1) => {
+  const handleReorderLists = useCallback(
+    (listIds: string[]) => {
       if (state.status !== 'ready' || isBusy) return
 
       const before = state.board
-      const listIds = withSwappedList(before, listId, direction)
 
       setActionError(null)
       setState({ status: 'ready', board: withListOrder(before, listIds) })
@@ -348,6 +352,20 @@ export default function App() {
         .finally(() => setPending((n) => n - 1))
     },
     [state, isBusy],
+  )
+
+  /**
+   * リストを隣と入れ替える（F-05）。`[←] [→]` の入口。
+   *
+   * **入れ替えた並びを求めて `handleReorderLists` に渡すだけ。** 送信も巻き戻しも
+   * そちらが持つ。ドラッグ&ドロップ（F-21）との違いは、この1行の求め方だけになる。
+   */
+  const handleMoveList = useCallback(
+    (listId: string, direction: -1 | 1) => {
+      if (state.status !== 'ready') return
+      handleReorderLists(withSwappedList(state.board, listId, direction))
+    },
+    [state, handleReorderLists],
   )
 
   /**
@@ -809,6 +827,7 @@ export default function App() {
               onDeleteCard={setDeletingCardId}
               onBulkDeleteCards={setBulkDeletingCardIds}
               onMoveCard={handleMoveCard}
+              onReorderLists={handleReorderLists}
               // 応答待ちの間は盤面が inert なので掴めないが、dnd-kit 側にも伝えておく
               isDragDisabled={isBusy}
             />
