@@ -40,6 +40,13 @@ type Props = {
   /** いま掴まれているタスク。掴んでいなければ null */
   draggingCardId: string | null
   /**
+   * 盤面で何かを掴んでいる最中か（#97）。**この列のタスクとは限らない。**
+   *
+   * 運んでいる間は、**どのカードの詳細も開かせない。** キーボードで掴んでいるときは
+   * ポインタが自由に動くので、掴んだカード以外を押せてしまう。
+   */
+  isDragActive: boolean
+  /**
    * この列に落ちる位置（F-13）。落ち先が他の列なら null。
    *
    * **掴んでいるタスクを除いた並びでの位置。** 落ち先を決める側（dropTarget.ts）と
@@ -144,6 +151,7 @@ export function ListColumn({
   onCompleteCard,
   isDragDisabled,
   draggingCardId,
+  isDragActive,
   dropIndex,
 }: Props) {
   // 開閉は列ごとに独立していて他と共有する必要がないので、ここで持つ。
@@ -280,7 +288,7 @@ export function ListColumn({
           <ArrowButton
             direction={-1}
             listTitle={list.title}
-            disabled={!canMoveLeft}
+            disabled={!canMoveLeft || isDragActive}
             onClick={() => onMoveList(list.id, -1)}
           />
         )}
@@ -295,10 +303,12 @@ export function ListColumn({
           <button
             type="button"
             onClick={() => onOpenList(list.id)}
+            // 運んでいる最中は押せない（#97）。移動の途中に別の更新を挟ませない
+            disabled={isDragActive}
             aria-label={`「${list.title}」の詳細`}
             // ボタンなので Tab でフォーカスでき、Enter / Space でも開く（要件 6.6）。
             // ダブルクリックだけにしないのはこのため
-            className="flex h-5 shrink-0 cursor-pointer items-center border-0 bg-transparent p-0 text-ink-sub hover:text-ink"
+            className="flex h-5 shrink-0 cursor-pointer items-center border-0 bg-transparent p-0 text-ink-sub hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:text-ink-sub"
           >
             <PencilIcon />
           </button>
@@ -335,7 +345,7 @@ export function ListColumn({
           <ArrowButton
             direction={1}
             listTitle={list.title}
-            disabled={!canMoveRight}
+            disabled={!canMoveRight || isDragActive}
             onClick={() => onMoveList(list.id, 1)}
           />
         )}
@@ -374,7 +384,7 @@ export function ListColumn({
             type="button"
             onClick={() => setSelectedIds(new Set(cards.map((card) => card.id)))}
             // 広げる先が無いときは押せない。0件の列で押しても何も起きないため
-            disabled={cards.length === 0}
+            disabled={cards.length === 0 || isDragActive}
             className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 whitespace-nowrap text-ink-sub hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:text-ink-sub"
           >
             全選択
@@ -382,7 +392,7 @@ export function ListColumn({
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
-            disabled={selected.length === 0}
+            disabled={selected.length === 0 || isDragActive}
             className="cursor-pointer rounded-card border border-line bg-surface px-2 py-1 whitespace-nowrap text-ink-sub hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:text-ink-sub"
           >
             選択解除
@@ -396,7 +406,7 @@ export function ListColumn({
             }}
             // **0件では押せない。** 確認モーダル1枚で全件削除に到達できるより、
             // まず1件チェックさせる方が誤操作を抑えられる（F-15 からの方針）
-            disabled={selected.length === 0}
+            disabled={selected.length === 0 || isDragActive}
             // danger は白文字とのコントラスト 6.0:1（index.css）。ConfirmModal の
             // 「削除する」と同じ扱いで、取り消せない操作であることを色でも示す
             className="cursor-pointer rounded-card border border-danger bg-surface px-2 py-1 whitespace-nowrap text-danger hover:bg-danger hover:text-danger-ink disabled:cursor-default disabled:opacity-40 disabled:hover:bg-surface disabled:hover:text-danger"
@@ -410,9 +420,11 @@ export function ListColumn({
         <button
           type="button"
           onClick={() => setIsAdding(true)}
+          // 運んでいる最中は押せない（#97）
+          disabled={isDragActive}
           // 点線にしているのは、タスクのカードと並んだときに「これはタスクではない」と
           // 一目で分かるようにするため。実線だと、中身が空のカードのように見える
-          className="cursor-pointer rounded-card border border-dashed border-ink-sub bg-surface px-2 py-1 text-left text-ink-sub hover:bg-surface hover:text-ink"
+          className="cursor-pointer rounded-card border border-dashed border-ink-sub bg-surface px-2 py-1 text-left text-ink-sub hover:bg-surface hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:text-ink-sub"
         >
           ＋ タスク追加
         </button>
@@ -489,6 +501,7 @@ export function ListColumn({
                     isSelectable ? `「${card.title}」を選択` : `「${card.title}」を完了にする`
                   }
                   isDragDisabled={isDragDisabled}
+                  isDragActive={isDragActive}
                   onCheck={isSelectable ? toggle : (cardId) => onCompleteCard(cardId)}
                   onOpen={onOpenCard}
                   onDelete={onDeleteCard}
@@ -519,3 +532,5 @@ export function ListColumn({
     </section>
   )
 }
+
+

@@ -10,6 +10,12 @@ type Props = {
   isDone: boolean
   /** 掴めなくするか（F-13）。応答待ちの間は true にする */
   isDragDisabled?: boolean
+  /**
+   * 盤面で何かを掴んでいる最中か（#97）。**このカード自身とは限らない。**
+   *
+   * 運んでいる間は、**どのカードの詳細も開かせない。**
+   */
+  isDragActive?: boolean
   onOpen: (cardId: string) => void
   onDelete: (cardId: string) => void
 }
@@ -107,11 +113,19 @@ function TaskCardView({
   dragProps,
   dragStyle,
   extraClassName = '',
+  isDragActive = false,
 }: Omit<Props, 'isDragDisabled'> & {
   dragRef?: (node: HTMLElement | null) => void
   dragProps?: Record<string, unknown>
   dragStyle?: CSSProperties
   extraClassName?: string
+  /**
+   * 盤面で**何かを掴んでいる最中か**（#97）。このカード自身が掴まれているかではない。
+   *
+   * **運んでいる間は、どのカードの詳細も開かせない。** キーボードで掴んでいるときは
+   * ポインタが自由に動くので、**掴んだカード以外を押せてしまう。**
+   */
+  isDragActive?: boolean
 }) {
   const due = formatDueAt(card)
   // 「完了」列に在ることだけを条件に上書きする。差し戻せば色分けが復活する
@@ -141,7 +155,12 @@ function TaskCardView({
        *
        * **ドラッグとは競合しない。** `PointerSensor` に 5px のしきい値があるので、
        * 動かさずに離せばクリックとして扱われる（掴む仕掛けを入れた時点からの前提）。 */
-      onClick={() => onOpen(card.id)}
+      /* **掴んでいる間は開かない**（#97）。掴んだカードは元の位置に透明で残っている
+       * （場所を空けておくため）ので、そこを押せると**運んでいる最中に詳細が開く。**
+       * キーボードで掴んでいるときは、その場所を押すつもりが無くても起こりうる */
+      onClick={() => {
+        if (!isDragActive) onOpen(card.id)
+      }}
       /* キーボードでは **`Enter` で開き、`Space` で掴む。** dnd-kit の既定では
        * `Enter` も掴む側に割り当たっているので、そちらは `Space` だけに絞ってある
        * （BoardView の KeyboardSensor）。
@@ -150,12 +169,17 @@ function TaskCardView({
        * 削除であって、詳細を開く操作ではない。 */
       onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
         dragKeyDown?.(event)
+        if (isDragActive) return
         if (event.key === 'Enter' && event.target === event.currentTarget) onOpen(card.id)
       }}
       // transform / transition は値が実行時に決まるので、クラス名ではなく style で当てる。
       // Tailwind はソースを走査してクラスを生成するため、動く値はクラスにできない
       style={dragStyle}
-      className={`mx-auto w-60 cursor-pointer touch-none rounded-card ${style.card} ${extraClassName}`}
+      /* **掴んでいる間は、押せる見た目も反応も外す**（#97）。元の位置に透明で残っている
+       * だけなので、指を乗せて手の形になるのも、押せてしまうのも実態と合わない */
+      className={`mx-auto w-60 touch-none rounded-card ${
+        isDragActive ? 'pointer-events-none' : 'cursor-pointer'
+      } ${style.card} ${extraClassName}`}
     >
       {/* タイトルはただの文字。**押せるのはカード全体**（上の onClick）なので、
           ここにボタンを入れると停留点が二重になる */}
@@ -172,11 +196,14 @@ function TaskCardView({
             event.stopPropagation()
             onDelete(card.id)
           }}
+          // **運んでいる最中は押せない**（#97）。ポインタでは `pointer-events-none` が
+          // カードごと止めるが、**キーボードのフォーカスはそれでは止まらない**
+          disabled={isDragActive}
           aria-label={`「${card.title}」を削除`}
           // 色はカードの文字色に追従させる（F-08）。赤背景では白、完了列では黒になる。
           // 薄くしないのは、どの背景でもコントラストを確保するため。ホバーの手応えは
           // 透明度で出す
-          className="shrink-0 cursor-pointer border-0 bg-transparent p-0 leading-none text-current hover:opacity-70"
+          className="shrink-0 cursor-pointer border-0 bg-transparent p-0 leading-none text-current hover:opacity-70 disabled:cursor-default disabled:hover:opacity-100"
         >
           <TrashIcon />
         </button>
@@ -198,7 +225,14 @@ function TaskCardView({
  * KeyboardSensor が「押した先が掴む対象そのものか」を見るため、タイトルの上での
  * Enter は今までどおり詳細を開く。
  */
-export function TaskCard({ card, isDone, isDragDisabled = false, onOpen, onDelete }: Props) {
+export function TaskCard({
+  card,
+  isDone,
+  isDragDisabled = false,
+  isDragActive = false,
+  onOpen,
+  onDelete,
+}: Props) {
   const { attributes, listeners, setNodeRef, isDragging } = useSortable({
     id: card.id,
     disabled: isDragDisabled,
@@ -228,6 +262,8 @@ export function TaskCard({ card, isDone, isDragDisabled = false, onOpen, onDelet
       // 示す」に沿ったものだったが、**ポインタに追従する本体と同じカードが2枚見える**
       // ことになり、実際に触ると本体の方を目で追うため、薄い方は情報にならなかった
       extraClassName={isDragging ? 'opacity-0' : ''}
+      // 掴まれているのが自分かどうかに関わらず、運んでいる間は開かせない
+      isDragActive={isDragActive}
     />
   )
 }
