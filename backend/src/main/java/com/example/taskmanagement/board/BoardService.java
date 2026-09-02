@@ -28,9 +28,9 @@ public class BoardService {
     private final EntityManager entityManager;
 
     public BoardService(BoardRepository boardRepository,
-                        TaskListRepository taskListRepository,
-                        CardRepository cardRepository,
-                        EntityManager entityManager) {
+            TaskListRepository taskListRepository,
+            CardRepository cardRepository,
+            EntityManager entityManager) {
         this.boardRepository = boardRepository;
         this.taskListRepository = taskListRepository;
         this.cardRepository = cardRepository;

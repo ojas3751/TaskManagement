@@ -52,7 +52,7 @@ public class BoardController {
      */
     @PatchMapping("/api/lists/{id}")
     public BoardResponse updateList(@PathVariable UUID id,
-                                    @Valid @RequestBody UpdateListRequest request) {
+            @Valid @RequestBody UpdateListRequest request) {
         return boardService.updateList(id, request);
     }
 
@@ -105,7 +105,7 @@ public class BoardController {
      */
     @PatchMapping("/api/cards/{id}")
     public BoardResponse updateCard(@PathVariable UUID id,
-                                    @Valid @RequestBody UpdateCardRequest request) {
+            @Valid @RequestBody UpdateCardRequest request) {
         return boardService.updateCard(id, request);
     }
 
