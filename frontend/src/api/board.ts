@@ -196,12 +196,6 @@ export async function updateCard(
 }
 
 /**
- * タスクを削除する（F-08）。仕様は docs/design/api.md 3.8。
- *
- * 204 ではなくボード全体が返る。削除で変わるのは対象のタスクだけではなく、
- * 同じリストの後続タスクの position も詰まるため。
- */
-/**
  * タスクを移動する（F-23、Step 11 では F-13 も）。仕様は docs/design/api.md 3.9。
  *
  * to_card_ids は移動後の移動先リストの並び順すべて。配列の添字がそのまま position に
@@ -224,6 +218,12 @@ export async function moveCard(input: {
   return (await res.json()) as Board
 }
 
+/**
+ * タスクを削除する（F-08）。仕様は docs/design/api.md 3.8。
+ *
+ * 204 ではなくボード全体が返る。削除で変わるのは対象のタスクだけではなく、
+ * 同じリストの後続タスクの position も詰まるため。
+ */
 export async function deleteCard(id: string): Promise<Board> {
   const res = await apiFetch(`/api/cards/${id}`, { method: 'DELETE' })
 
