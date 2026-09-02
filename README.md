@@ -125,14 +125,31 @@ pwsh -File scripts/free-port.ps1 3000 8080
 | 目的 | コマンド |
 | --- | --- |
 | バックエンド起動 | `cd backend; .\gradlew bootRun` |
-| バックエンドのテスト | `cd backend; .\gradlew test` |
+| **バックエンドの検査（整形・静的検査・テスト）** | `cd backend; .\gradlew check` |
+| バックエンドの整形を当てる | `cd backend; .\gradlew spotlessApply` |
 | フロントエンド起動 | `cd frontend; npm run dev` |
 | 型チェック＋ビルド | `cd frontend; npm run build` |
 | Lint | `cd frontend; npm run lint` |
+| フロントエンドのテスト | `cd frontend; npm run test` |
 | DB に psql で入る | `docker compose exec db psql -U taskmanagement -d taskmanagement` |
 | ポート解放 | `pwsh -File scripts/free-port.ps1 3000 8080` |
 
 `psql` / `pg_dump` は**コンテナ経由で使う**。ホストに入れる必要はなく、サーバーと版が必ず一致する。バックアップ手順は [運用手順](docs/operations.md)。
+
+### 品質チェック
+
+**PR を作ると GitHub Actions が同じことを自動で走らせる**（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）。結果は PR の画面に出る。
+
+| 対象 | 内容 |
+| --- | --- |
+| フロントエンド | `npm run lint` → `npm run test` → `npm run build` |
+| バックエンド | `./gradlew check`（Spotless の整形検査、Checkstyle、テスト） |
+
+- **`npm run lint` は警告が出ても成功する。** 導入時点で 83 件の指摘があり、実装の修正を別 Issue に回したため（設定の意図は [`frontend/.oxlintrc.json`](frontend/.oxlintrc.json) にコメントで書いてある）。**新しく書くコードで増やさないこと。**
+- **`./gradlew check` は違反があれば失敗する。** 整形は `spotlessApply` で当てられる。
+- バックエンドのテストは Testcontainers で使い捨ての PostgreSQL を立てるため、**Docker が起動している必要がある。**
+
+レビューの観点は [品質レビュー スキル](.claude/skills/quality-review/SKILL.md) にまとめてある。
 
 ---
 
