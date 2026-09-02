@@ -1,6 +1,8 @@
+import type { CollisionDetection } from '@dnd-kit/core'
 import { describe, expect, it } from 'vitest'
 import type { Board, TaskList } from '../api/types'
 import {
+  createListDropCollisionDetection,
   fixedLastListId,
   fromColumnDraggableId,
   isSameListPlace,
@@ -83,6 +85,55 @@ describe('withMovedList', () => {
   it('右へ動かすとき、掴んだ列を抜いてから数える', () => {
     // todo を抜くと ['doing', 'design']。1 は doing と design の間
     expect(withMovedList(board, 'todo', 1)).toEqual(['doing', 'todo', 'design', 'done'])
+  })
+})
+
+describe('キーボードで動かしているときの落ち先', () => {
+  /**
+   * ポインタが無い経路（キーボード）を通すための引数。**矩形を渡す口だけが本題**なので、
+   * dnd-kit が渡す他の項目は使われない。型は満たさないため、この関数の中だけで押さえる。
+   */
+  const keyboardArgs = (
+    draggingId: string,
+    rects: Map<string, { left: number; width: number }>,
+  ) =>
+    ({
+      active: { id: toColumnDraggableId(draggingId) },
+      collisionRect: { left: 0, width: 300 },
+      droppableRects: rects,
+      pointerCoordinates: null,
+    }) as unknown as Parameters<CollisionDetection>[0]
+
+  it('列の矩形が1つも取れなくても、落ち先を返す（例外にしない）', () => {
+    // 掴んでいる最中に矩形が取れないことは起こりうる。ここで未定義の識別子を参照しており、
+    // 到達すると ReferenceError になっていた（#103）。落ち先は末尾＝完了列
+    const detect = createListDropCollisionDetection(board)
+
+    expect(detect(keyboardArgs('todo', new Map()))).toEqual([
+      { id: toColumnDraggableId('done') },
+    ])
+  })
+
+  it('完了列が無ければ、落ち先を返さない', () => {
+    // 末尾の目印が無いので決めようがない。そのまま離しても移動しない
+    const noFixedLast: Board = { ...board, lists: [list('todo', 0), list('doing', 1)] }
+    const detect = createListDropCollisionDetection(noFixedLast)
+
+    expect(detect(keyboardArgs('todo', new Map()))).toEqual([])
+  })
+
+  it('矩形が取れるときは、いちばん近い列で決まる', () => {
+    // design を掴んで todo の場所まで運んだ。todo は自分より左なので「その手前」に入る。
+    // design を抜いた並び ['todo', 'doing'] の 0 番＝ todo の手前
+    const detect = createListDropCollisionDetection(board)
+    const rects = new Map([
+      [toColumnDraggableId('todo'), { left: 0, width: 300 }],
+      [toColumnDraggableId('doing'), { left: 300, width: 300 }],
+      [toColumnDraggableId('design'), { left: 600, width: 300 }],
+    ])
+
+    // collisionRect の中心 150 が todo の中心 150 と一致する
+    expect(detect(keyboardArgs('design', rects))).toEqual([{ id: toColumnDraggableId('todo') }])
   })
 })
 

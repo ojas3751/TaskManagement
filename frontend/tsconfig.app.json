@@ -17,6 +17,10 @@
     "jsx": "react-jsx",
 
     /* Linting */
+    // Vite の React-TS テンプレートの既定。#103 で有効化した。
+    // 有効にする前に計測したところ、増えるエラーは 0 件だった（既存コードが
+    // `?.` や `?? null` で undefined を丁寧に扱っていたため）。
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,

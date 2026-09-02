@@ -195,7 +195,8 @@ function closestColumn(
     }
   }
 
-  if (nearest === null) return [{ id: LIST_END_DROPPABLE_ID }]
+  // どの列の矩形も取れなかった。落ち先を決める材料が無いので、末尾（完了列の手前）に倒す
+  if (nearest === null) return toEndCollision(board)
 
   // 自分の場所がいちばん近い＝いまの位置のまま。手前にいる列の数がそのまま添字になる
   const stayIndex = movable.indexOf(draggingId)
