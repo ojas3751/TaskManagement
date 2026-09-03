@@ -7,7 +7,11 @@ description: このリポジトリの品質チェック。フロントエンド�
 
 ## 最初に必ずやること — 実際に走らせる
 
-**推測で「〜箇所くらい問題がある」と言わない。** #103 で「30箇所ほど」と見積もって報告したが、実測は違った（lint 83件、型エラー6件、strict 追加による増分 0件）。数字を出すなら、必ず下のコマンドの出力から取る。
+**推測で「〜箇所くらい問題がある」と言わない。** #103 で「30箇所ほど」と見積もって報告したが、実測は lint 83件・型エラー6件だった。
+
+**見積もりは高い側にも低い側にも外れる。** 同じときに「`strict: true` を入れると既存バグが表面化するので大きな作業になる」とも言ったが、**実測した増分は 0 件**で、実質ゼロコストだった。**外れ方が一方向でない以上、測る以外に当てる方法は無い。**
+
+数字を出すなら、必ず下のコマンドの出力から取る。
 
 ```powershell
 cd frontend
@@ -36,6 +40,43 @@ cd ..\backend
 | `react/exhaustive-deps` が 0 件 | ルールが効いていないのではない。**依存の「過剰」は検出しない**（`useCallback` の依存に `state` 全体が入っている問題はここでは捕まらない）。lint に頼らず自分で読むこと |
 | Checkstyle がテスト名を弾く | テストのメソッド名は日本語。意図した書き方なので規約側を合わせてある |
 | `palantirJavaFormat` / `googleJavaFormat` が `NoSuchMethodError` | JDK 25 で javac の内部 API の署名が変わったため。Eclipse の整形器を使っている。**戻そうとしないこと** |
+
+---
+
+## 手元が緑でも CI は落ちる
+
+**上のコマンドが全部通ったことは、CI が通ることの証明にならない。** #103 では、手元で lint・build・テスト173件・`gradlew check` がすべて通った状態で push したが、**CI は両 job とも失敗した。**
+
+**PR を出したら、必ず PR 画面で CI の結果を見ること。** 出しっぱなしにしない。
+
+```powershell
+gh run list --branch <ブランチ名> --limit 1
+gh run view <id> --json jobs --jq '.jobs[] | "\(.name): \(.conclusion)"'
+gh run view <id> --log-failed        # 失敗した step のログだけ出る
+```
+
+### 型1: 実行環境に依存するテスト
+
+期限まわりのテスト（`dueAt` / `dueStatus` / `formatDueAt`）は**日本時間を前提に書かれており、CI（UTC）で20件落ちた。** 手元が JST なので、書いた本人には見えない。
+
+いまは `frontend/vite.config.ts` の `test.env.TZ` で `Asia/Tokyo` に固定してある。**日時を扱うテストを足したら、疑わしいときは環境を変えて走らせる。**
+
+```powershell
+$env:TZ='UTC'; npm run test; Remove-Item Env:TZ
+```
+
+**同じ構造の依存は他にもある** — ロケール（`toLocaleString`）、改行コード、パスの区切り。**「自分の環境でだけ成立する前提」をテストに書き込んでいないか**を見る。
+
+### 型2: ファイルの実行権限
+
+`backend/gradlew` の git 上のモードが `100644` のままで、**CI（Linux）で `Permission denied`（exit 126）** になった。Windows には実行権限の概念が無いため、Windows で作られたファイルはこうなる。
+
+```powershell
+git ls-files -s backend/gradlew        # 100755 になっているか
+git update-index --chmod=+x <path>     # 直す
+```
+
+**実行されるスクリプトを新しく足したときは必ず見ること。** シェルスクリプト、フック、CI から叩くもの。
 
 ---
 
@@ -109,6 +150,28 @@ JPA は「動いてしまうが間違っている」が起きやすい。**発�
 
 ---
 
+## 仕組みそのものを見る
+
+**「入れた検査が通ったか」だけでなく、「そもそも何を検査していないか」を毎回見る。** 以下は #103 の時点で**まだ入っていない**もの。入ったら、この節から消して上の手順に移すこと。
+
+| 観点 | #103 時点の状態 | 確かめ方 |
+| --- | --- | --- |
+| **CI が必須チェックか** | ruleset は削除禁止・force push 禁止・PR 必須の3つのみ。**赤い PR でもマージボタンが押せた** | `gh api repos/:owner/:repo/rulesets` → `required_status_checks` があるか |
+| 依存の更新を見る仕組み | `.github/dependabot.yml` **無し**（`npm audit` は脆弱性0件） | ファイルの有無 |
+| `noUncheckedIndexedAccess` | 未検討。**足すと 68 件**出る | `tsc -p tsconfig.app.json --noEmit --noUncheckedIndexedAccess` |
+| フロントの整形器 | **無い。** backend に Spotless を入れたのに非対称 | `package.json` に `format` スクリプトがあるか |
+| lint の警告を `error` に戻せるか | 5ルールを `warn` に落として **83件**を許している | `npm run lint` の警告数 |
+| カバレッジ | フロント・バックエンドとも計測していない | `vitest --coverage` / JaCoCo |
+| a11y の実行時チェック | 静的解析（`jsx-a11y`）のみ | `axe-core` の導入有無 |
+
+読み方の注意:
+
+- **`noUncheckedIndexedAccess` の68件は「直せば消えるノイズ」とは限らない。** このコードベースは配列の添字アクセスが多く（`lists[index + 1]`、`ids[to]` など）、**実際に undefined になりうる箇所が混ざっている可能性がある。** 数が多いので単独の Issue に切る規模
+- **lint の「新しいコードで増やさない」は人間の意志に頼っている。** 設定ファイルにそう書いてあるだけで、仕組みでは守られていない。**既存分を片付けたら `error` に戻すこと**が、この約束を仕組みに変える唯一の方法
+- **`jsx-a11y` は静的に分かる範囲しか見ない。** モーダルにフォーカストラップが無いことのような**実行時の問題は捕まらない**（実際、83件の中に入っていなかった）
+
+---
+
 ## 報告のしかた
 
 - **重要度で並べる。** 「白画面になる」と「コメントの数値が古い」を同列に並べない
@@ -124,6 +187,7 @@ JPA は「動いてしまうが間違っている」が起きやすい。**発�
 - `frontend/.oxlintrc.json` — 各ルールを入れた理由と、既存の違反を今すぐ直さない理由
 - `backend/build.gradle.kts` — Spotless と Checkstyle の設定と、整形器を選んだ経緯
 - `backend/config/checkstyle/checkstyle.xml` — 規約を実態に合わせた3点の調整
-- `.github/workflows/ci.yml` — PR で自動実行される内容
+- `.github/workflows/ci.yml` — PR で自動実行される内容。**job 名（`frontend` / `backend`）は ruleset の必須チェックに登録されている。改名するときは ruleset も直すこと**（名前が変わると、その結果が永久に来ず PR がマージできなくなる）
+- `frontend/vite.config.ts` — テストの実行タイムゾーンの固定
 - `README.md`「品質チェック」／`docs/operations.md` 3.2 — 人間向けの手順
 - `docs/backlog.md` — レビューで見つかった未対応のもの
