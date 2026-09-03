@@ -1,0 +1,65 @@
+# PR と main への push で、品質チェックを GitHub 上で自動実行する（#103）。
+#
+# 手元で叩き忘れても、PR の画面に結果が出る。実際、この仕組みを入れるまで
+# npm run build が失敗する状態が main に入っていた（npm run dev は型を見ないため
+# 手元では動いてしまい、気づけなかった）。
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 同じブランチへ続けて push したとき、古い実行を打ち切る。
+# 結果が要るのは最新のコミットに対するものだけなので。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm install ではなく ci。package-lock.json のとおりに入れ、
+      # 手元と違う版が入って結果が変わることを防ぐ
+      - run: npm ci
+
+      # 導入時点で83件の警告が出るが、終了コードは0（設定の意図は .oxlintrc.json を参照）
+      - run: npm run lint
+
+      - run: npm run test
+
+      # tsc -b と vite build。型エラーはここで落ちる
+      - run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # build.gradle.kts の toolchain と同じ
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # check には spotlessCheck・checkstyle・test が紐づいている。
+      # テストは Testcontainers で使い捨ての postgres:17 を立てる。ubuntu-latest の
+      # ランナーには Docker が入っているため、追加の設定は要らない
+      - run: ./gradlew check --no-daemon

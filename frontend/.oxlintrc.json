@@ -1,8 +1,48 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
+  // プラグインは既定では大半が無効。何を見てほしいかをここで選ぶ（#103 で拡張）。
+  //   jsx-a11y  … アクセシビリティ。キーボードと支援技術で操作できるか
+  //   import    … モジュールの参照。循環や副作用だけの import
+  //   promise   … Promise の扱い漏れ
+  //   react-perf … 再描画のたびに新しい関数・配列・オブジェクトを props へ渡していないか
+  //   vitest    … テストの書き方
+  "plugins": [
+    "react",
+    "typescript",
+    "oxc",
+    "jsx-a11y",
+    "import",
+    "promise",
+    "react-perf",
+    "vitest"
+  ],
+  // 「明白な誤り」だけを error にする。残りは警告に留め、npm run lint 自体は成功させる。
+  // 導入時点で 83 件の指摘が出るが、実装の修正は #103 の対象外としたため（別 Issue）。
+  // ここで error にすると、直すまで CI が赤いままになる。
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    // React 19 の JSX 変換では import React が不要。有効にすると 159 件すべてが誤検出になる
+    "react/react-in-jsx-scope": "off",
+
+    // ここから下は correctness に属するため既定では error になるが、導入時点で
+    // 既に違反している。直すのは #103 の対象外なので警告へ落とす。
+    // **新しく書くコードでこれらを増やさないこと。** 既存分を片付けたら error へ戻す。
+    //
+    // モーダルの背景（クリックで閉じる <div>）にキーボードの口が無い。4 箇所。
+    // <dialog> + showModal() へ寄せると、これとフォーカストラップが同時に片付く
+    "jsx-a11y/no-static-element-interactions": "warn",
+    "jsx-a11y/no-noninteractive-element-interactions": "warn",
+    // role="status" などを、対応する HTML タグで書けという指摘。6 箇所
+    "jsx-a11y/prefer-tag-over-role": "warn",
+    // vi.fn() に型引数が無い。10 箇所（App.test.tsx）
+    "vitest/require-mock-type-parameters": "warn",
+    // expect を含まないテストが 1 件（App.test.tsx）
+    "vitest/expect-expect": "warn"
   }
 }

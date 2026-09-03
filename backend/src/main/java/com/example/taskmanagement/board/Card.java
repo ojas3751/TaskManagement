@@ -60,7 +60,7 @@ public class Card {
     }
 
     public Card(UUID id, TaskList list, String title, String description,
-                OffsetDateTime dueAt, boolean hasDueTime, int position) {
+            OffsetDateTime dueAt, boolean hasDueTime, int position) {
         this.id = id;
         this.list = list;
         this.title = title;
@@ -80,7 +80,7 @@ public class Card {
      * <p>list_id と position はここでは変えられない。移動は別の責務（api.md 3.9）。
      */
     public void updateDetails(String title, String description,
-                              OffsetDateTime dueAt, boolean hasDueTime) {
+            OffsetDateTime dueAt, boolean hasDueTime) {
         this.title = title;
         this.description = description;
         this.dueAt = dueAt;

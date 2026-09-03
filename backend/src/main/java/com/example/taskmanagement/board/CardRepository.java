@@ -13,7 +13,7 @@ public interface CardRepository extends JpaRepository<Card, UUID> {
      * リスト内のタスク件数。200 件の上限判定に使う（docs/design/api.md 2.3）。
      *
      * <p>{@code max(position)} で代用しないのは、position が 0 始まりの連番であることに
-     * 依存した判定になるため。件数の上限は件数で数える（docs/design/database.md 5章）。
+     * 依存した判定になるため。件数の上限は件数で数える（docs/design/database.md 4章）。
      */
     int countByListId(UUID listId);
 

@@ -119,3 +119,4 @@ Issue と PR には **種類を1つ**、**領域を1つ以上**付ける。
 - [ドキュメント一覧](docs/README.md)
 - [開発計画](docs/development-plan.md) — Step 0〜11。マイルストーンと対応している
 - [dev-servers スキル](.claude/skills/dev-servers/SKILL.md) — 開発サーバーの起動とポートの扱い
+- [quality-review スキル](.claude/skills/quality-review/SKILL.md) — 品質チェックの手順とレビューの観点。**PR を出す前に通すコマンドもここ**

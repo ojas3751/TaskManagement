@@ -79,11 +79,11 @@ class BoardControllerTest {
         mockMvc.perform(postCard(id, "編集前のタイトル")).andExpect(status().isCreated());
 
         mockMvc.perform(patchCard(id, """
-                        {"title": "編集後のタイトル",
-                         "description": "1行目\\n2行目",
-                         "due_at": null,
-                         "has_due_time": false}
-                        """))
+                {"title": "編集後のタイトル",
+                 "description": "1行目\\n2行目",
+                 "due_at": null,
+                 "has_due_time": false}
+                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lists[0].cards[0].title").value("編集後のタイトル"))
                 // 改行がそのまま往復すること（F-07 の完了の目安）
@@ -96,11 +96,11 @@ class BoardControllerTest {
         mockMvc.perform(postCard(id, "期限を入れるタスク")).andExpect(status().isCreated());
 
         mockMvc.perform(patchCard(id, """
-                        {"title": "期限を入れるタスク",
-                         "description": "",
-                         "due_at": "2026-08-30T09:00:00+09:00",
-                         "has_due_time": true}
-                        """))
+                {"title": "期限を入れるタスク",
+                 "description": "",
+                 "due_at": "2026-08-30T09:00:00+09:00",
+                 "has_due_time": true}
+                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lists[0].cards[0].due_at").value("2026-08-30T09:00:00+09:00"))
                 .andExpect(jsonPath("$.lists[0].cards[0].has_due_time").value(true));
@@ -112,8 +112,8 @@ class BoardControllerTest {
         mockMvc.perform(postCard(id, "タイトルを消してみるタスク")).andExpect(status().isCreated());
 
         mockMvc.perform(patchCard(id, """
-                        {"title": "  ", "description": "", "due_at": null, "has_due_time": false}
-                        """))
+                {"title": "  ", "description": "", "due_at": null, "has_due_time": false}
+                """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("CARD_TITLE_REQUIRED"));
     }
@@ -124,8 +124,8 @@ class BoardControllerTest {
         mockMvc.perform(postCard(id, "長いタイトルにするタスク")).andExpect(status().isCreated());
 
         mockMvc.perform(patchCard(id, """
-                        {"title": "%s", "description": "", "due_at": null, "has_due_time": false}
-                        """.formatted("あ".repeat(101))))
+                {"title": "%s", "description": "", "due_at": null, "has_due_time": false}
+                """.formatted("あ".repeat(101))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("CARD_TITLE_TOO_LONG"));
     }
@@ -136,9 +136,9 @@ class BoardControllerTest {
         mockMvc.perform(postCard(id, "長い説明文にするタスク")).andExpect(status().isCreated());
 
         mockMvc.perform(patchCard(id, """
-                        {"title": "長い説明文にするタスク", "description": "%s",
-                         "due_at": null, "has_due_time": false}
-                        """.formatted("あ".repeat(5001))))
+                {"title": "長い説明文にするタスク", "description": "%s",
+                 "due_at": null, "has_due_time": false}
+                """.formatted("あ".repeat(5001))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("CARD_DESCRIPTION_TOO_LONG"));
     }
@@ -151,9 +151,9 @@ class BoardControllerTest {
         // 「9時30分。ただし何月何日かは未定」は表示のしようがないので値として認めない。
         // 2 項目にまたがる検証なので、@Valid ではなく BoardService が弾いている
         mockMvc.perform(patchCard(id, """
-                        {"title": "期限のおかしいタスク", "description": "",
-                         "due_at": null, "has_due_time": true}
-                        """))
+                {"title": "期限のおかしいタスク", "description": "",
+                 "due_at": null, "has_due_time": true}
+                """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("DUE_TIME_WITHOUT_DUE_DATE"));
     }
@@ -161,9 +161,9 @@ class BoardControllerTest {
     @Test
     void 存在しないタスクの編集は404を返す() throws Exception {
         mockMvc.perform(patchCard(UUID.randomUUID(), """
-                        {"title": "どこにもないタスク", "description": "",
-                         "due_at": null, "has_due_time": false}
-                        """))
+                {"title": "どこにもないタスク", "description": "",
+                 "due_at": null, "has_due_time": false}
+                """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
     }
@@ -241,10 +241,10 @@ class BoardControllerTest {
     @Test
     void 削除対象が空なら400を返す() throws Exception {
         mockMvc.perform(post("/api/cards/bulk-delete")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"card_ids": []}
-                                """))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"card_ids": []}
+                        """))
                 .andExpect(status().isBadRequest())
                 // @NotEmpty に任せると汎用の INVALID_REQUEST になる。
                 // 仕様どおりのコードを返すため BoardService が投げている
@@ -284,9 +284,9 @@ class BoardControllerTest {
         mockMvc.perform(postCard(alreadyThere, "進行中に元からある", DOING_LIST_ID)).andExpect(status().isCreated());
 
         mockMvc.perform(moveCard("""
-                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
-                         "to_card_ids": ["%s", "%s"]}
-                        """.formatted(moving, TODO_LIST_ID, DOING_LIST_ID, alreadyThere, moving)))
+                {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                 "to_card_ids": ["%s", "%s"]}
+                """.formatted(moving, TODO_LIST_ID, DOING_LIST_ID, alreadyThere, moving)))
                 .andExpect(status().isOk())
                 // 移動元は 1 件になり、position が 0 に詰まる（抜けた分の空番を残さない）
                 .andExpect(jsonPath("$.lists[0].cards.length()").value(1))
@@ -306,9 +306,9 @@ class BoardControllerTest {
 
         // UC-03。完了は移動元にも移動先にもなれる必要がある
         mockMvc.perform(moveCard("""
-                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
-                         "to_card_ids": ["%s"]}
-                        """.formatted(card, DONE_LIST_ID, TODO_LIST_ID, card)))
+                {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                 "to_card_ids": ["%s"]}
+                """.formatted(card, DONE_LIST_ID, TODO_LIST_ID, card)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lists[0].cards[0].title").value("終わったつもりのタスク"))
                 .andExpect(jsonPath("$.lists[2].cards.length()").value(0));
@@ -323,9 +323,9 @@ class BoardControllerTest {
 
         // 追加直後は [2枚目, 1枚目]。これを入れ替える（Step 11 のドラッグ&ドロップで使う経路）
         mockMvc.perform(moveCard("""
-                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
-                         "to_card_ids": ["%s", "%s"]}
-                        """.formatted(first, TODO_LIST_ID, TODO_LIST_ID, first, second)))
+                {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                 "to_card_ids": ["%s", "%s"]}
+                """.formatted(first, TODO_LIST_ID, TODO_LIST_ID, first, second)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lists[0].cards[0].title").value("1枚目"))
                 .andExpect(jsonPath("$.lists[0].cards[1].title").value("2枚目"));
@@ -338,9 +338,9 @@ class BoardControllerTest {
 
         // 移動先に存在しない ID が含まれている。画面の情報が古いときに起きる
         mockMvc.perform(moveCard("""
-                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
-                         "to_card_ids": ["%s", "%s"]}
-                        """.formatted(card, TODO_LIST_ID, DOING_LIST_ID, card, UUID.randomUUID())))
+                {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                 "to_card_ids": ["%s", "%s"]}
+                """.formatted(card, TODO_LIST_ID, DOING_LIST_ID, card, UUID.randomUUID())))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("CARD_IDS_MISMATCH"));
     }
@@ -353,9 +353,9 @@ class BoardControllerTest {
         mockMvc.perform(postCard(other, "進行中のタスク", DOING_LIST_ID)).andExpect(status().isCreated());
 
         mockMvc.perform(moveCard("""
-                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
-                         "to_card_ids": ["%s"]}
-                        """.formatted(card, TODO_LIST_ID, DOING_LIST_ID, other)))
+                {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                 "to_card_ids": ["%s"]}
+                """.formatted(card, TODO_LIST_ID, DOING_LIST_ID, other)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("CARD_IDS_MISMATCH"));
     }
@@ -367,9 +367,9 @@ class BoardControllerTest {
 
         // 画面は「進行中にいる」と思っているが、実際は TODO にいる
         mockMvc.perform(moveCard("""
-                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
-                         "to_card_ids": ["%s"]}
-                        """.formatted(card, DOING_LIST_ID, DONE_LIST_ID, card)))
+                {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                 "to_card_ids": ["%s"]}
+                """.formatted(card, DOING_LIST_ID, DONE_LIST_ID, card)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("CARD_IDS_MISMATCH"));
     }
@@ -379,9 +379,9 @@ class BoardControllerTest {
         UUID missing = UUID.randomUUID();
 
         mockMvc.perform(moveCard("""
-                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
-                         "to_card_ids": ["%s"]}
-                        """.formatted(missing, TODO_LIST_ID, DOING_LIST_ID, missing)))
+                {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                 "to_card_ids": ["%s"]}
+                """.formatted(missing, TODO_LIST_ID, DOING_LIST_ID, missing)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
     }
@@ -392,9 +392,9 @@ class BoardControllerTest {
         mockMvc.perform(postCard(card, "移動するタスク")).andExpect(status().isCreated());
 
         mockMvc.perform(moveCard("""
-                        {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
-                         "to_card_ids": ["%s"]}
-                        """.formatted(card, TODO_LIST_ID, UUID.randomUUID(), card)))
+                {"card_id": "%s", "from_list_id": "%s", "to_list_id": "%s",
+                 "to_card_ids": ["%s"]}
+                """.formatted(card, TODO_LIST_ID, UUID.randomUUID(), card)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("LIST_NOT_FOUND"));
     }
@@ -416,8 +416,8 @@ class BoardControllerTest {
         String body = """
                 {"card_ids": [%s]}
                 """.formatted(Stream.of(ids)
-                        .map(id -> "\"" + id + "\"")
-                        .collect(Collectors.joining(", ")));
+                .map(id -> "\"" + id + "\"")
+                .collect(Collectors.joining(", ")));
 
         return post("/api/cards/bulk-delete").contentType(MediaType.APPLICATION_JSON).content(body);
     }

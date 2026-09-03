@@ -1,4 +1,4 @@
-# 運用手順 v1.2
+# 運用手順 v1.3
 
 **関連文書**: [要件定義書](requirements.md) ／ [データベース設計](design/database.md) ／ [開発計画](development-plan.md) ／ [文書一覧](README.md)
 
@@ -12,6 +12,7 @@
 | **1.0** | **2026-08-16** | 要件定義書 v1.0（技術スタック確定）を反映し、**保留していた起動手順を記載して本書を完成させた。** **Docker を使わない方針に変更**したため、システム構成図・バックアップの注意事項を全面的に書き換え。「初回セットアップ」の章を新設 |
 | **1.1** | **2026-08-17** | 要件定義書 v1.1 を反映し、**DB を Docker で動かす手順に全面的に書き換えた。** 2章の初回セットアップから PostgreSQL の直接インストール・ロール作成の手作業を削除し、`compose.yaml` と `.env` の説明に置き換え。3章の起動手順に `docker compose up -d` を追加。4章のバックアップを `docker compose exec` 経由に変更し、**ボリューム削除の警告を復活**。**本書の手順は実際に実行して確認済み** |
 | **1.2** | **2026-08-20** | **「3.5 開発用テストデータの投入」を新設。** `scripts/dev-seed.sql` の使い方と、これを Flyway の管理外に置いている理由を記載した。既存の章に変更なし |
+| **1.3** | **2026-09-02** | **「3.2 品質チェック」を新設**（#103）。`npm run lint` / `npm run test` / `npm run build` / `.\gradlew check` の叩き方と、PR で GitHub Actions が同じことを走らせることを記載。**`npm run dev` が型を見ないこと**を注意点として明記した。既存の章に変更なし |
 
 ---
 
@@ -165,6 +166,31 @@ docker compose ps         # STATUS が Up ... (healthy) になっていること
 | DB のコンテナ | `docker compose down` |
 
 > **`docker compose down` に `-v` を付けないこと。** データが消える。詳細は 4.3。
+
+---
+
+## 3.2 品質チェック
+
+**PR を出す前に手元で通しておく。** PR を作れば GitHub Actions が同じことを走らせる（`.github/workflows/ci.yml`）ので、赤くなってから直すこともできるが、手元のほうが速い。
+
+```powershell
+cd frontend
+npm run lint     # oxlint。警告は出るが、終了コードは 0
+npm run test     # vitest
+npm run build    # tsc -b + vite build。型エラーはここで落ちる
+
+cd ..\backend
+.\gradlew check  # Spotless の整形検査 + Checkstyle + テスト
+```
+
+| 押さえておくこと | 内容 |
+| --- | --- |
+| **`npm run dev` は型を見ない** | Vite は型チェックを省く。型の誤りは `npm run build` でしか出ない。実際、この検査を入れるまでビルドが失敗する状態に気づけていなかった（#103） |
+| **lint の警告は残してある** | 導入時点で 83 件。実装の修正は別 Issue に回した。設定の意図は `frontend/.oxlintrc.json` のコメント。**新しく書くコードで増やさないこと** |
+| **整形は自動で当てられる** | `.\gradlew check` が整形の違反で落ちたら `.\gradlew spotlessApply` |
+| **バックエンドのテストには Docker が要る** | Testcontainers が使い捨ての PostgreSQL を立てる。`docker compose` で使っている開発用 DB とは別のコンテナで、そちらのデータには触らない |
+
+レビューの観点は `.claude/skills/quality-review/SKILL.md` にまとめてある。
 
 **起動を忘れた場合の画面**は [機能仕様書](functional-spec.md) の「通信エラー」を参照。エラーメッセージが、起動していないのがバックエンドなのか DB なのかを示す。
 

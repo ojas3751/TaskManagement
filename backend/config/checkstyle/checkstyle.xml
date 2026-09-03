@@ -1,0 +1,115 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+  静的検査の設定（#103）。
+
+  **整形に関わる項目は置かない。** インデント・桁数・空白・改行の位置は
+  build.gradle.kts の Spotless（palantirJavaFormat）が持っている。両方に持たせると、
+  設定がずれたときに互いを打ち消し合い、どちらに従えばよいか分からなくなる。
+
+  google_checks.xml / sun_checks.xml を使わないのも同じ理由。どちらも 2 スペース
+  インデントや行長の検査を含んでおり、palantir の整形と正面から衝突する。
+
+  ここが見るのは、整形では直らない書き方の問題に絞る。
+-->
+<module name="Checker">
+  <property name="charset" value="UTF-8"/>
+  <property name="severity" value="error"/>
+  <property name="fileExtensions" value="java"/>
+
+  <!-- ファイル末尾の改行。Spotless の endWithNewline と同じ約束を検査側にも置く -->
+  <module name="NewlineAtEndOfFile"/>
+
+  <module name="TreeWalker">
+
+    <!-- ===== import ===== -->
+    <!-- 使っていない import。消し忘れは読み手に「まだ使っている」と誤解させる -->
+    <module name="UnusedImports">
+      <property name="processJavadoc" value="true"/>
+    </module>
+    <!-- import java.util.*; の形。何が入ってくるか読めなくなる -->
+    <module name="AvoidStarImport"/>
+    <!-- 同じ package や java.lang からの import は書く意味が無い -->
+    <module name="RedundantImport"/>
+
+    <!-- ===== 命名 ===== -->
+    <module name="PackageName"/>
+    <module name="TypeName"/>
+    <module name="MemberName"/>
+    <module name="ParameterName"/>
+    <module name="LocalVariableName"/>
+
+    <!--
+      メソッド名は camelCase。ただし**日本語の名前も許す。**
+      テストは「追加するとボード全体が返る」のように、何を確かめているかを日本語で
+      書いている（JUnit 5 は識別子に日本語を使える）。これは意図した書き方なので、
+      規約の側を実態に合わせる。既定のままだと 50 件が違反になる。
+    -->
+    <module name="MethodName">
+      <!--
+        camelCase か、**日本語を 1 文字以上含む名前**。先頭が日本語であることは求めない
+        （「DBに接続できないときは503とDB_UNAVAILABLEを返す」のように英字で始まる例がある）。
+      -->
+      <property name="format"
+                value="^[a-z][a-zA-Z0-9]*$|^[a-zA-Z0-9_\x{80}-\x{FFFF}]*[\x{80}-\x{FFFF}][a-zA-Z0-9_\x{80}-\x{FFFF}]*$"/>
+    </module>
+
+    <!--
+      定数は UPPER_SNAKE_CASE。ただし `log` を許す。
+      SLF4J のロガーを `private static final Logger log` と書くのは広く定着した書き方で、
+      LOG に直す実益が無い（GlobalExceptionHandler が該当）。
+    -->
+    <module name="ConstantName">
+      <property name="format" value="^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$|^log$"/>
+    </module>
+
+    <!-- ===== 誤りやすい書き方 ===== -->
+    <!-- catch を空にしない。握り潰した例外は、後から追う手段が無くなる -->
+    <module name="EmptyCatchBlock">
+      <!-- 意図して無視する場合は、変数名か中のコメントで理由を書けば通る -->
+      <property name="exceptionVariableName" value="expected|ignored"/>
+      <property name="commentFormat" value=".*"/>
+    </module>
+    <!-- if / for / while の中括弧を省かない。行を足したときに条件から外れる事故を防ぐ -->
+    <module name="NeedBraces"/>
+    <!-- 片方だけ定義すると、コレクションに入れたときに壊れる -->
+    <module name="EqualsHashCode"/>
+    <!-- "abc".equals(x) の形にして、x が null でも落ちないようにする -->
+    <module name="EqualsAvoidNull"/>
+    <!-- switch に default を置く -->
+    <module name="MissingSwitchDefault"/>
+    <!-- case を素通りさせない -->
+    <module name="FallThrough"/>
+    <!-- 代入を式の途中に埋め込まない -->
+    <module name="InnerAssignment"/>
+    <!-- if (x == true) の類 -->
+    <module name="SimplifyBooleanExpression"/>
+    <module name="SimplifyBooleanReturn"/>
+    <!-- 引数を書き換えない。呼び出し元の意図と読み手の期待からずれる -->
+    <module name="ParameterAssignment"/>
+    <!-- long は 10l ではなく 10L。小文字の l は 1 と見分けがつかない -->
+    <module name="UpperEll"/>
+    <!-- 配列は String[] args の形。String args[] は型が末尾に散る -->
+    <module name="ArrayTypeStyle"/>
+    <!-- 意味のない public / final などの修飾子 -->
+    <module name="RedundantModifier"/>
+    <!-- 修飾子の並び順（public static final の順） -->
+    <module name="ModifierOrder"/>
+    <!-- ネストが深すぎる if / try -->
+    <module name="NestedIfDepth">
+      <property name="max" value="2"/>
+    </module>
+    <!--
+      HideUtilityClassConstructor は入れない。
+      Spring Boot の起動クラス（main だけを持つ @SpringBootApplication）が
+      「ユーティリティクラス」と判定され、Spring Boot の標準の書き方が違反になるため。
+    -->
+
+    <!-- ===== 抑制の口 ===== -->
+    <!-- 個別に外したいときは // CHECKSTYLE:OFF ～ // CHECKSTYLE:ON で囲む -->
+    <module name="SuppressionCommentFilter"/>
+  </module>
+</module>

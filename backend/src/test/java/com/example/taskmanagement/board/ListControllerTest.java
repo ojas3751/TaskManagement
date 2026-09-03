@@ -126,7 +126,7 @@ class ListControllerTest {
     @Test
     void デフォルトの3列は改名できない() throws Exception {
         // 画面は改名ボタンを出さないが、API 単独で呼ばれても守る（api.md 2.3）
-        for (String listId : new String[] {TODO_LIST_ID, DOING_LIST_ID, DONE_LIST_ID}) {
+        for (String listId : new String[]{TODO_LIST_ID, DOING_LIST_ID, DONE_LIST_ID}) {
             mockMvc.perform(patchList(UUID.fromString(listId), "書き換えてみる"))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.code").value("LIST_PROTECTED"));
@@ -201,7 +201,7 @@ class ListControllerTest {
 
     @Test
     void デフォルトの3列は削除できない() throws Exception {
-        for (String listId : new String[] {TODO_LIST_ID, DOING_LIST_ID, DONE_LIST_ID}) {
+        for (String listId : new String[]{TODO_LIST_ID, DOING_LIST_ID, DONE_LIST_ID}) {
             mockMvc.perform(delete("/api/lists/{id}", UUID.fromString(listId)))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.code").value("LIST_PROTECTED"));

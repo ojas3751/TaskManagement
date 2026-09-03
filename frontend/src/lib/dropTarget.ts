@@ -18,6 +18,19 @@ import { fromColumnDraggableId } from './listDropTarget'
  */
 const LIST_PREFIX = 'list:'
 
+/**
+ * 矩形を id で引けるもの。**`Map` そのものを求めない。**
+ *
+ * dnd-kit が渡してくるのは `RectMap`（= `Map<UniqueIdentifier, ClientRect>`）で、キーの型は
+ * `string | number` である。これを `Map<string, …>` と書いた引数で受けると、`Map` のキーの型は
+ * 双方向に一致することを求められるため代入できない（`strict` を入れる前から型エラーになっていた）。
+ *
+ * ここで実際に使うのは `get` だけで、しかも渡す id は必ず string。**「string で引ける」ことだけを
+ * 求める形にすれば、dnd-kit の `RectMap` も、テストが組み立てる `Map<string, …>` も両方が通る。**
+ * 必要な座標の項目だけを型引数で指定する（読む値が違う 2 つのヘルパで使い回すため）。
+ */
+type RectLookup<T> = { get(id: string): T | undefined }
+
 export function toListDroppableId(listId: string): string {
   return `${LIST_PREFIX}${listId}`
 }
@@ -156,7 +169,7 @@ export function listIdOfCard(board: Board, cardId: string): string | null {
 function hoveredListId(
   board: Board,
   rect: { left: number; width: number },
-  droppableRects: Map<string, { left: number; width: number }>,
+  droppableRects: RectLookup<{ left: number; width: number }>,
 ): string | null {
   const center = rect.left + rect.width / 2
 
@@ -193,7 +206,7 @@ function hoveredListId(
 function slotTops(
   board: Board,
   listId: string,
-  droppableRects: Map<string, { top: number; height: number }>,
+  droppableRects: RectLookup<{ top: number; height: number }>,
   isOwnList: boolean,
 ): number[] {
   const rects = orderedIds(board, listId)
