@@ -24,6 +24,13 @@ export default defineConfig({
     // コンポーネントのテストにはブラウザの DOM が要る（#47）。
     // src/lib/ の純粋関数は DOM を触らないので、全体を jsdom にしても影響はない
     environment: 'jsdom',
+    // **タイムゾーンを固定する（#103）。**
+    // 期限まわり（dueAt / dueStatus / formatDueAt）のテストは日本時間を前提に
+    // 書かれており、実行環境の設定に依存して結果が変わる。開発者の手元は JST
+    // なので気づけなかったが、**CI（UTC）で20件が落ちた。**
+    // このアプリ自体が JST 固定（バックエンドの spring.jackson.time-zone も
+    // Asia/Tokyo）なので、テストも同じ前提に揃える。
+    env: { TZ: 'Asia/Tokyo' },
     // @testing-library/jest-dom のマッチャ（toBeInTheDocument など）を全テストで使う
     setupFiles: ['./src/test/setup.ts'],
   },
