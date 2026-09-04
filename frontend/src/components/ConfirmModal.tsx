@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { ModalDialog } from './ModalDialog'
 
 type Props = {
   /** 見出し。「削除の確認」など */
@@ -21,33 +22,18 @@ type Props = {
 export function ConfirmModal({ title, lines, confirmLabel, onConfirm, onCancel }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onCancel])
-
   // 初期フォーカスはキャンセルに置く。開いた直後に Enter を押しても削除されないように
-  // するため（画面設計 7章）。取り消せない操作なので、既定は「何もしない」側に倒す
+  // するため（画面設計 7章）。取り消せない操作なので、既定は「何もしない」側に倒す。
+  //
+  // **`<dialog>` の自動フォーカスに任せない。** showModal() は最初のフォーカス可能な
+  // 要素を選ぶので、ボタンの並び次第で「削除する」に当たりうる
   useEffect(() => {
     cancelRef.current?.focus()
   }, [])
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel()
-      }}
-    >
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="confirm-modal-title"
-        className="w-full max-w-100 rounded-card bg-surface shadow-lg"
-      >
+    <ModalDialog labelledBy="confirm-modal-title" alert onCancel={onCancel}>
+      <div>
         <div className="border-b border-line px-4 py-3">
           <h2 id="confirm-modal-title" className="m-0 text-base font-bold">
             {title}
@@ -81,6 +67,6 @@ export function ConfirmModal({ title, lines, confirmLabel, onConfirm, onCancel }
           </button>
         </div>
       </div>
-    </div>
+    </ModalDialog>
   )
 }

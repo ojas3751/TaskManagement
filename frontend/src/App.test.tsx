@@ -591,7 +591,10 @@ describe('リストの編集モード（F-24）', () => {
 
     // モーダルも Esc で閉じる作りなので、無条件に拾うと両方が閉じる
     openListDetail()
-    fireEvent.keyDown(window, { key: 'Escape' })
+    // **モーダルへ撃つ。** `<dialog>` に替えた後は、モーダル側の Esc は window ではなく
+    // ダイアログ自身で拾う（#113）。実ブラウザでもフォーカスはモーダルの中にあり、
+    // そこから window まで伝播する — App 側にも届くので、この確認の意味は変わらない
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'リストの編集を終える' })).toBeInTheDocument()
@@ -905,5 +908,35 @@ describe('想定外の応答と描画中の例外（C-5 / C-6）', () => {
     }
 
     expect(screen.getByText('画面の表示中に問題が発生しました。')).toBeInTheDocument()
+  })
+})
+
+describe('入力エラーの伝え方（C-10）', () => {
+  /**
+   * **`role="alert"` は出た瞬間に一度読まれるだけ。** フォーカスを入力欄へ戻したときに
+   * 何が間違っているのかが読まれないので、`aria-invalid` と `aria-describedby` で
+   * 入力欄そのものに紐付ける。
+   */
+  it('空欄で保存すると、エラーが入力欄に紐付く', async () => {
+    await renderBoard(boardWithAddedList)
+    openListDetail()
+
+    fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    const input = screen.getByLabelText('リスト名')
+    expect(input).toBeInvalid()
+    expect(input).toHaveAccessibleDescription('入力してください。')
+  })
+
+  it('入力し直すと紐付けは外れる', async () => {
+    await renderBoard(boardWithAddedList)
+    openListDetail()
+
+    fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: '設計・調査' } })
+
+    expect(screen.getByLabelText('リスト名')).toBeValid()
   })
 })

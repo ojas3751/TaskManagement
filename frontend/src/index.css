@@ -57,3 +57,23 @@ body {
   color: var(--color-ink);
   background: var(--color-bg);
 }
+
+/* ------------------------------------------------------------------
+   フォーカスの輪郭（#113 / C-10）。
+
+   入力欄は `focus:outline-none` で輪郭線を消し、border の色だけで
+   フォーカスを示していた。**Windows のハイコントラストモード
+   （forced-colors）では border の色が OS に上書きされるため、
+   フォーカスの位置が完全に分からなくなる。** キーボードだけで操作して
+   いる人は、そこで詰む。
+
+   :focus-visible にするのは、マウスでクリックしたときには出さないため。
+   ブラウザが「キーボード操作か」を判断してくれる。
+
+   :where() で包んでいるので詳細度は 0。個別に上書きしたくなったときに、
+   通常のユーティリティが普通に勝つ。
+   ------------------------------------------------------------------ */
+:where(input, textarea, select, button, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
