@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -938,5 +939,73 @@ describe('入力エラーの伝え方（C-10）', () => {
     fireEvent.change(screen.getByLabelText('リスト名'), { target: { value: '設計・調査' } })
 
     expect(screen.getByLabelText('リスト名')).toBeValid()
+  })
+})
+
+describe('古い読み込みが後着しても勝たない（C-9）', () => {
+  /**
+   * **`StrictMode` は effect を2回走らせる**（`main.tsx` で使っている）。読み込みは
+   * 応答待ちのロックを通らないので、そのとき2本が並ぶ。**先発が遅れて返ると、
+   * 後発が描いた盤面を古い内容で上書きしうる。**
+   *
+   * **[再読み込み] の連打では再現しない。** 押した瞬間に state が loading になり、
+   * LoadError ごとボタンが消えるため（#115 で確認した）。
+   */
+  it('先に投げた読み込みが後から返っても、後発の盤面が残る', async () => {
+    const first = deferred<Board>()
+    const second = deferred<Board>()
+    vi.mocked(fetchBoard).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+
+    // 後発が先に返る
+    await act(async () => {
+      second.resolve(boardWithAddedList)
+    })
+    expect(listTitles()).toEqual(['TODO', '設計', '完了'])
+
+    // 先発が遅れて返る。捨てられるので、盤面は動かない
+    await act(async () => {
+      first.resolve(board)
+    })
+    expect(listTitles()).toEqual(['TODO', '設計', '完了'])
+  })
+
+  it('中止された読み込みでは、エラー表示に切り替わらない', async () => {
+    const first = deferred<Board>()
+    const second = deferred<Board>()
+    vi.mocked(fetchBoard).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+
+    // 中止は「失敗」として返る。そのまま流すと「サーバーが起動していません」が出る
+    await act(async () => {
+      first.reject(new DOMException('The operation was aborted.', 'AbortError'))
+      second.resolve(board)
+    })
+
+    expect(screen.queryByText('サーバーが起動していません。')).not.toBeInTheDocument()
+    expect(await screen.findByText('牛乳を買う')).toBeInTheDocument()
+  })
+
+  it('再読み込みすると、前の読み込みは中止される', async () => {
+    vi.mocked(fetchBoard).mockRejectedValue(dbDown)
+    render(<App />)
+    expect(await screen.findByText('データベースに接続できません。')).toBeInTheDocument()
+
+    const before = vi.mocked(fetchBoard).mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }))
+
+    // 前回に渡した signal が中止されていること。これが中止の口そのもの
+    const previous = vi.mocked(fetchBoard).mock.calls[before - 1][0]
+    expect(previous?.aborted).toBe(true)
   })
 })

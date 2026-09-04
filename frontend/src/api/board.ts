@@ -35,9 +35,33 @@ const TIMEOUT_MS = 35_000
  * 超過すると DOMException（TimeoutError）が投げられる。BoardApiError ではないので
  * App.tsx の isUnreachable が true を返し、「サーバーに接続できませんでした。」として
  * 扱われる。呼び出し側に追加のハンドリングは要らない。
+ *
+ * **呼び出し側からも中止できる**（#115）。上限は内部で固定したままにし、渡された
+ * signal と合成する。**片方だけにすると、もう片方が効かなくなる** — 上限を捨てれば
+ * 応答が返らないまま操作できなくなり、呼び出し側の signal を捨てれば古い応答を
+ * 止められない。
  */
-function apiFetch(url: string, init?: RequestInit): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
+function apiFetch(url: string, init?: RequestInit, signal?: AbortSignal): Promise<Response> {
+  const timeout = AbortSignal.timeout(TIMEOUT_MS)
+  return fetch(url, {
+    ...init,
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  })
+}
+
+/**
+ * 中止によって投げられたものか（#115）。
+ *
+ * **中止は「失敗」として返ってくる。** そのままエラー処理へ流すと、中止のたびに
+ * 「サーバーが起動していません」が誤って出る（App.tsx の isUnreachable は
+ * BoardApiError でないものを通信失敗と見なすため）。**呼び出し側は、これが true の
+ * ものを捨てる。**
+ *
+ * **タイムアウト（TimeoutError）は含めない。** あちらは利用者に伝えるべき失敗で、
+ * こちらは「もう要らないと自分で決めた」もの。名前で分かれる。
+ */
+export function isAborted(cause: unknown): boolean {
+  return cause instanceof DOMException && cause.name === 'AbortError'
 }
 
 /**
@@ -125,9 +149,13 @@ async function readBoard(res: Response, fallback: string): Promise<Board> {
  *
  * パスは相対にしておく。開発中は Vite の proxy が :8080 へ転送し、
  * 本番でも同一オリジンから配信する前提のため、ホストを書く必要がない。
+ *
+ * **中止できるのはこれだけ**（#115）。更新系は応答待ちのロック（App.tsx の pending）で
+ * 同時に1本しか飛ばないが、**読み込みはそのロックを通らない**ため、再読み込みの連打で
+ * 複数が並ぶ。順序が入れ替わる余地があるのはここだけ。
  */
-export async function fetchBoard(): Promise<Board> {
-  const res = await apiFetch('/api/board')
+export async function fetchBoard(signal?: AbortSignal): Promise<Board> {
+  const res = await apiFetch('/api/board', undefined, signal)
 
   return readBoard(res, 'ボードを取得できませんでした')
 }
