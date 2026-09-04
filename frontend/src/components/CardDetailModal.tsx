@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Card, TaskList } from '../api/types'
 import { toDueAtFields, toDueAtIso } from '../lib/dueAt'
+import { ModalDialog } from './ModalDialog'
 
 const TITLE_MAX = 100
 const DESCRIPTION_MAX = 5000
@@ -58,15 +59,6 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
   const titleRef = useRef<HTMLInputElement>(null)
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
 
-  // Escape はモーダル内にフォーカスが無くても効かせたいので、window で拾う
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onCancel])
-
   // 開いたときのフォーカスは説明文に置く。タスクを開く動機はたいてい説明文の
   // 読み書きであり、タイトルは一覧に出ているので開く前から見えている。
   //
@@ -80,6 +72,7 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
   }, [])
 
   const isEmpty = title.trim() === ''
+  const hasTitleError = submitted && isEmpty
   // 日付が無ければ、時刻の指定もクリアも意味を持たない
   const isDueDisabled = due.date === ''
 
@@ -111,18 +104,14 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5"
-      // 背景クリックで閉じる。モーダル本体のクリックが浮上してきた場合は無視する
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel()
-      }}
+    <ModalDialog
+      labelledBy="card-detail-modal-title"
+      onCancel={onCancel}
+      // 説明文が長いと縦に伸びるので、ここだけ幅と高さの指定が要る
+      className="flex max-w-140 flex-col overflow-hidden"
     >
       <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="card-detail-modal-title"
-        className="flex max-h-full w-full max-w-140 flex-col rounded-card bg-surface shadow-lg"
+        className="flex min-h-0 flex-col"
         onSubmit={(e) => {
           e.preventDefault()
           submit()
@@ -160,7 +149,7 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
               id="card-detail-list"
               value={listId}
               onChange={(e) => setListId(e.target.value)}
-              className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+              className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary"
             >
               {lists.map((list) => (
                 <option key={list.id} value={list.id}>
@@ -183,13 +172,16 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
             // 実際に値を組み立てるここで揃えておく
             maxLength={TITLE_MAX}
             onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
-            className="mt-1 w-full rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+            // エラーを入力欄に紐付ける（C-10）。理由は NameField と同じ
+            aria-invalid={hasTitleError}
+            aria-describedby={hasTitleError ? 'card-detail-title-error' : undefined}
+            className="mt-1 w-full rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary"
           />
           {/* エラー文言と文字数カウンタを同じ行に収める。文言が短いので、
               独立した行を確保すると空きだけが残る */}
           <div className="mt-1 flex items-baseline justify-between gap-3">
-            <p className="m-0 text-danger" role="alert">
-              {submitted && isEmpty ? '入力してください。' : ''}
+            <p id="card-detail-title-error" className="m-0 text-danger" role="alert">
+              {hasTitleError ? '入力してください。' : ''}
             </p>
             <CharCounter length={title.length} max={TITLE_MAX} />
           </div>
@@ -205,7 +197,7 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
             rows={8}
             maxLength={DESCRIPTION_MAX}
             onChange={(e) => setDescription(e.target.value.slice(0, DESCRIPTION_MAX))}
-            className="mt-1 w-full resize-y rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+            className="mt-1 w-full resize-y rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary"
           />
           <CharCounter length={description.length} max={DESCRIPTION_MAX} />
 
@@ -242,7 +234,7 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
                 aria-label="期限の日付"
                 value={due.date}
                 onChange={(e) => setDue((prev) => ({ ...prev, date: e.target.value }))}
-                className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+                className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary"
               />
               <input
                 type="time"
@@ -251,7 +243,7 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
                 // 日付が無ければ時刻だけ指定しても意味がないので、そこでも無効にする
                 disabled={!hasDueTime || isDueDisabled}
                 onChange={(e) => setDue((prev) => ({ ...prev, time: e.target.value }))}
-                className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none disabled:bg-list-bg disabled:text-ink-sub"
+                className="rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary disabled:bg-list-bg disabled:text-ink-sub"
               />
               <button
                 type="button"
@@ -281,6 +273,6 @@ export function CardDetailModal({ card, currentList, lists, onSave, onCancel }: 
           </button>
         </div>
       </form>
-    </div>
+    </ModalDialog>
   )
 }

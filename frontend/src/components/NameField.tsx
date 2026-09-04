@@ -32,6 +32,8 @@ export function NameField({
 }: Props) {
   const isEmpty = value.trim() === ''
   const isAtLimit = value.length >= maxLength
+  const hasError = showEmptyError && isEmpty
+  const errorId = `${id}-error`
 
   return (
     <>
@@ -48,12 +50,17 @@ export function NameField({
         // 実際に値を組み立てるここで揃えておく
         maxLength={maxLength}
         onChange={(e) => onChange(e.target.value.slice(0, maxLength))}
-        className="mt-1 w-full rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary focus:outline-none"
+        // エラーを入力欄に紐付ける（C-10）。**role="alert" は出た瞬間に一度読まれる
+        // だけ**で、フォーカスを戻したときには読まれない。この2つがあると、
+        // 読み上げソフトが入力欄の名前と一緒にエラー内容を読む
+        aria-invalid={hasError}
+        aria-describedby={hasError ? errorId : undefined}
+        className="mt-1 w-full rounded-card border border-line bg-surface px-2 py-1.5 focus:border-primary"
       />
 
       <div className="mt-1 flex items-start justify-between gap-3">
-        <p className="m-0 text-danger" role="alert">
-          {showEmptyError && isEmpty ? '入力してください。' : ''}
+        <p id={errorId} className="m-0 text-danger" role="alert">
+          {hasError ? '入力してください。' : ''}
         </p>
         {/* 文字数カウンタ（E-01）。上限に達したら赤にする */}
         <p className={`m-0 shrink-0 ${isAtLimit ? 'text-danger' : 'text-ink-sub'}`}>

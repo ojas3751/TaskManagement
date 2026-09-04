@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ModalDialog } from './ModalDialog'
 import { NameField } from './NameField'
 
 type Props = {
@@ -40,15 +41,6 @@ export function NameInputModal({
   const [submitted, setSubmitted] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Escape はモーダル内にフォーカスが無くても効かせたいので、window で拾う
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onCancel])
-
   useEffect(() => {
     inputRef.current?.select()
   }, [])
@@ -65,18 +57,8 @@ export function NameInputModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5"
-      // 背景クリックで閉じる。モーダル本体のクリックが浮上してきた場合は無視する
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel()
-      }}
-    >
+    <ModalDialog labelledBy="name-input-modal-title" onCancel={onCancel}>
       <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="name-input-modal-title"
-        className="w-full max-w-100 rounded-card bg-surface shadow-lg"
         onSubmit={(e) => {
           // form にしておくと Enter での確定がブラウザ側の挙動として付いてくる
           e.preventDefault()
@@ -125,6 +107,6 @@ export function NameInputModal({
           </button>
         </div>
       </form>
-    </div>
+    </ModalDialog>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { TaskList } from '../api/types'
+import { ModalDialog } from './ModalDialog'
 import { NameField } from './NameField'
 
 type Props = {
@@ -33,14 +34,6 @@ export function ListDetailModal({ list, onSave, onDelete, onCancel }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onCancel])
-
-  useEffect(() => {
     inputRef.current?.select()
   }, [])
 
@@ -54,17 +47,8 @@ export function ListDetailModal({ list, onSave, onDelete, onCancel }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel()
-      }}
-    >
+    <ModalDialog labelledBy="list-detail-modal-title" onCancel={onCancel}>
       <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="list-detail-modal-title"
-        className="w-full max-w-100 rounded-card bg-surface shadow-lg"
         onSubmit={(e) => {
           e.preventDefault()
           submit()
@@ -130,6 +114,6 @@ export function ListDetailModal({ list, onSave, onDelete, onCancel }: Props) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalDialog>
   )
 }
