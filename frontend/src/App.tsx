@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   BoardApiError,
   bulkDeleteCards,
@@ -7,6 +7,7 @@ import {
   deleteCard,
   deleteList,
   fetchBoard,
+  isAborted,
   moveCard,
   reorderLists,
   updateCard,
@@ -165,16 +166,39 @@ export default function App() {
   // 応答待ちをどう見せているか。段階の意味は下の useEffect を参照
   const [waitPhase, setWaitPhase] = useState<WaitPhase>('idle')
 
+  /**
+   * 飛んでいる読み込みを止めるための口（#115）。
+   *
+   * **読み込みは応答待ちのロック（pending）を通らない**ので、［再読み込み］を連打すると
+   * 複数が並ぶ。**そのままだと「最後にクリックした結果」ではなく「最後に返ってきた
+   * 結果」が勝ち、遅い応答が後着して古い盤面で上書きする。**
+   */
+  const loading = useRef<AbortController | null>(null)
+
   const load = useCallback(() => {
+    // 前の読み込みは、結果が要らなくなったこの時点で止める
+    loading.current?.abort()
+    const controller = new AbortController()
+    loading.current = controller
+
     setState({ status: 'loading' })
     setActionError(null)
-    fetchBoard().then(
-      (board) => setState({ status: 'ready', board }),
-      (cause: unknown) => setState(toErrorState(cause)),
+    fetchBoard(controller.signal).then(
+      // 中止したものの結果は、成功でも捨てる。**中止した fetch は失敗で返るので
+      // 普通はここへ来ない**が、「要らないと決めた結果を使わない」という判断を
+      // 経路の両方に置いておく。片側だけだと、成り立ちが fetch の作法に乗る
+      (board) => (controller.signal.aborted ? undefined : setState({ status: 'ready', board })),
+      // 中止は「失敗」として返る。伝えるべきことは何も起きていないので捨てる。
+      // ここで流すと、中止のたびに「サーバーが起動していません」が誤って出る
+      (cause: unknown) => (isAborted(cause) ? undefined : setState(toErrorState(cause))),
     )
   }, [])
 
-  useEffect(load, [load])
+  useEffect(() => {
+    load()
+    // 画面を離れるときも止める。返ってきた結果を受け取る相手がもういない
+    return () => loading.current?.abort()
+  }, [load])
 
   /**
    * 応答待ちの見せ方を2段階に分ける（#44）。
