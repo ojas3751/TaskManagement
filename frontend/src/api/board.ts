@@ -1,4 +1,4 @@
-import type { ApiError, Board } from './types'
+import type { ApiError, Board, Card, TaskList } from './types'
 
 /**
  * サーバー側が返したエラー。
@@ -63,6 +63,64 @@ async function toApiError(res: Response, fallback: string): Promise<BoardApiErro
 }
 
 /**
+ * 応答が Board の形をしているかを実行時に確かめる。
+ *
+ * **`as Board` は何も確かめない。** 開発中は Vite の proxy が 502 の HTML を返すことが
+ * 実際にあり（上の isUnreachable 周りの経緯も同じ）、そのまま画面へ渡すと
+ * `board.lists.flatMap(...)` の時点で TypeError になる。
+ *
+ * 深さは「App が描画中に落ちない」ところまでで足りる。仕様の全項目を検証すると、
+ * フィールドを1つ足すたびにここが壊れる。
+ */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null
+}
+
+function isCard(v: unknown): v is Card {
+  return isRecord(v) && typeof v.id === 'string' && typeof v.title === 'string'
+}
+
+function isTaskList(v: unknown): v is TaskList {
+  return (
+    isRecord(v) &&
+    typeof v.id === 'string' &&
+    typeof v.title === 'string' &&
+    Array.isArray(v.cards) &&
+    v.cards.every(isCard)
+  )
+}
+
+function isBoard(v: unknown): v is Board {
+  return isRecord(v) && Array.isArray(v.lists) && v.lists.every(isTaskList)
+}
+
+/**
+ * 成功レスポンスを Board として読む。**すべての API 関数がここを通る。**
+ *
+ * 検証に失敗したときに投げるのは、BoardApiError では**ない**素の Error。
+ * App.tsx の isUnreachable は「自前のエラー本体（code）を読めたか」で通信失敗と
+ * サーバーエラーを分けており（機能仕様書 4.2）、そこへ検証の失敗を混ぜると
+ * 判別が狂う。BoardApiError でなければ「手前で止まっている」に倒れ、
+ * 既存の経路がそのまま使える。
+ *
+ * @param fallback 失敗レスポンスから文言が取れなかったときに出す文言
+ */
+async function readBoard(res: Response, fallback: string): Promise<Board> {
+  if (!res.ok) throw await toApiError(res, fallback)
+
+  let body: unknown
+  try {
+    body = await res.json()
+  } catch {
+    throw new Error('サーバーの応答を解釈できませんでした。')
+  }
+
+  if (!isBoard(body)) throw new Error('サーバーの応答が想定と違いました。')
+
+  return body
+}
+
+/**
  * ボード・リスト・タスクを一括で取得する（F-01）。
  *
  * パスは相対にしておく。開発中は Vite の proxy が :8080 へ転送し、
@@ -71,9 +129,7 @@ async function toApiError(res: Response, fallback: string): Promise<BoardApiErro
 export async function fetchBoard(): Promise<Board> {
   const res = await apiFetch('/api/board')
 
-  if (!res.ok) throw await toApiError(res, 'ボードを取得できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'ボードを取得できませんでした')
 }
 
 /**
@@ -89,9 +145,7 @@ export async function createList(input: { id: string; title: string }): Promise<
     body: JSON.stringify(input),
   })
 
-  if (!res.ok) throw await toApiError(res, 'リストを追加できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'リストを追加できませんでした')
 }
 
 /**
@@ -107,9 +161,7 @@ export async function updateList(id: string, input: { title: string }): Promise<
     body: JSON.stringify(input),
   })
 
-  if (!res.ok) throw await toApiError(res, 'リスト名を変更できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'リスト名を変更できませんでした')
 }
 
 /**
@@ -125,9 +177,7 @@ export async function reorderLists(input: { list_ids: string[] }): Promise<Board
     body: JSON.stringify(input),
   })
 
-  if (!res.ok) throw await toApiError(res, 'リストを並び替えできませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'リストを並び替えできませんでした')
 }
 
 /**
@@ -139,9 +189,7 @@ export async function reorderLists(input: { list_ids: string[] }): Promise<Board
 export async function deleteList(id: string): Promise<Board> {
   const res = await apiFetch(`/api/lists/${id}`, { method: 'DELETE' })
 
-  if (!res.ok) throw await toApiError(res, 'リストを削除できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'リストを削除できませんでした')
 }
 
 /**
@@ -167,9 +215,7 @@ export async function createCard(input: {
     body: JSON.stringify(input),
   })
 
-  if (!res.ok) throw await toApiError(res, 'タスクを追加できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'タスクを追加できませんでした')
 }
 
 /**
@@ -190,9 +236,7 @@ export async function updateCard(
     body: JSON.stringify(input),
   })
 
-  if (!res.ok) throw await toApiError(res, 'タスクを保存できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'タスクを保存できませんでした')
 }
 
 /**
@@ -213,9 +257,7 @@ export async function moveCard(input: {
     body: JSON.stringify(input),
   })
 
-  if (!res.ok) throw await toApiError(res, 'タスクを移動できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'タスクを移動できませんでした')
 }
 
 /**
@@ -227,9 +269,7 @@ export async function moveCard(input: {
 export async function deleteCard(id: string): Promise<Board> {
   const res = await apiFetch(`/api/cards/${id}`, { method: 'DELETE' })
 
-  if (!res.ok) throw await toApiError(res, 'タスクを削除できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'タスクを削除できませんでした')
 }
 
 /**
@@ -247,7 +287,5 @@ export async function bulkDeleteCards(cardIds: string[]): Promise<Board> {
     body: JSON.stringify({ card_ids: cardIds }),
   })
 
-  if (!res.ok) throw await toApiError(res, 'タスクを削除できませんでした')
-
-  return (await res.json()) as Board
+  return readBoard(res, 'タスクを削除できませんでした')
 }
