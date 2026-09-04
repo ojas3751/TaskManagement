@@ -14,6 +14,7 @@ import {
   updateList,
 } from './api/board'
 import type { Board, Card } from './api/types'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 /**
  * 通信だけを差し替える。BoardApiError は App がエラーの種類を見分けるのに使って
@@ -869,3 +870,40 @@ describe('待っていることの見せ方（#44）', () => {
   })
 })
 
+
+
+describe('想定外の応答と描画中の例外（C-5 / C-6）', () => {
+  /**
+   * board.ts の検証が投げるのは BoardApiError では**ない**素の Error（api/board.test.ts）。
+   * App から見ると「手前で止まっている」と同じ扱いになり、白画面ではなく全面の
+   * エラー表示に倒れる。ここで確かめているのは、その受け側。
+   */
+  it('壊れた応答が返っても、白画面にならずエラー表示が出る', async () => {
+    vi.mocked(fetchBoard).mockRejectedValue(new Error('サーバーの応答が想定と違いました。'))
+
+    render(<App />)
+
+    expect(await screen.findByText('サーバーが起動していません。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument()
+  })
+
+  it('描画中に例外が出ても、ErrorBoundary が全面の表示に置き換える', () => {
+    function Broken(): never {
+      throw new Error('描画中の例外')
+    }
+
+    // React は捕まえた例外も console.error に出す。テストの出力を汚さないよう黙らせる
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(
+        <ErrorBoundary>
+          <Broken />
+        </ErrorBoundary>,
+      )
+    } finally {
+      quiet.mockRestore()
+    }
+
+    expect(screen.getByText('画面の表示中に問題が発生しました。')).toBeInTheDocument()
+  })
+})
