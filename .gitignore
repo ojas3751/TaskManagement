@@ -8,6 +8,26 @@ __pycache__/
 .env.local
 *.key
 
+# Terraform（github/gitignore の Terraform.gitignore に準拠）
+# state と plan の保存ファイルには、秘密情報が平文で入ることがある
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+*.tfplan
+tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# .terraform.lock.hcl はプロバイダの版を固定するためのものなので、コミットする
+
 # ビルド成果物
 dist/
 build/

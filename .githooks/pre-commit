@@ -1,0 +1,16 @@
+#!/bin/sh
+# コミットのたびに gitleaks で、追加した変更に秘密情報が無いかを検査する。
+# 人が手で打つコミットも守るためのもの（AI のコミットは .claude/hooks/guard-secrets.ps1 も検査する）。
+#
+# 有効にするには、各 PC で一度だけ次を実行する（このフォルダのフックを Git に使わせる）:
+#   git config core.hooksPath .githooks
+# gitleaks 本体も各 PC に必要: winget install --id Gitleaks.Gitleaks
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-commit] gitleaks が見つからないため、コミットを止めました。" >&2
+  echo "  winget install --id Gitleaks.Gitleaks で入れてから、ターミナルを開き直してください。" >&2
+  exit 1
+fi
+
+# --redact: 見つけた秘密は伏せ字で表示する（ターミナルのログにキーを残さないため）
+exec gitleaks git --pre-commit --redact --staged --verbose

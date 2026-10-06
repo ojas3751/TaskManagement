@@ -98,8 +98,11 @@ docs/15-update-operations
 - **Claude が PR をマージすること**（`gh pr merge`）。
 - **Issue を作らずに作業を始めること。**
 - **開発サーバーを規定以外のポートで起動すること**（上の「起動ポート」）。
+- **Terraform で AWS の実物を変えるコマンド**（`apply` / `destroy` など）と、**AWS の削除系コマンド**の実行。課金と不可逆性があるため、ユーザーが打つ。Claude の担当は `.tf` を書くことと `fmt` / `validate` / `plan` まで。
+- **AWS のプロファイル `taskmgmt-readonly` 以外を使うこと**、認証情報ファイル（`~/.aws/credentials`）を読むこと。
+- **秘密情報（AWS のキー・秘密鍵など）を含む変更のコミット。** 例示には AWS 公式のダミー値（`AKIAIOSFODNN7EXAMPLE`）を使う。
 
-これらは `.claude/hooks/` 配下のフック（`guard-git.ps1` / `guard-ports.ps1`）によってツール実行の時点でブロックされる。ブロックされたら、抜け道を探すのではなく手順に戻ること。
+これらは `.claude/hooks/` 配下のフック（`guard-git.ps1` / `guard-ports.ps1` / `guard-aws.ps1` / `guard-secrets.ps1`）によってツール実行の時点でブロックされる。人が手で打つコミットも `.githooks/pre-commit`（gitleaks）が検査する（有効化の手順は [運用手順](docs/operations.md) 2.7）。ブロックされたら、抜け道を探すのではなく手順に戻ること。
 
 ---
 

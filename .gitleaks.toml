@@ -1,0 +1,14 @@
+# gitleaks の設定。.githooks/pre-commit から使われる。
+# 標準のルール（AWS のキー、GitHub のトークン、秘密鍵など数百種類）をそのまま使う。
+
+title = "TaskManagement"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "AWS 公式ドキュメントの例示用の値（ガイドで説明に使う）"
+regexes = [
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',
+]

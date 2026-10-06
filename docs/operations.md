@@ -1,4 +1,4 @@
-# 運用手順 v1.4
+# 運用手順 v1.5
 
 **関連文書**: [要件定義書](requirements.md) ／ [データベース設計](design/database.md) ／ [開発計画](development-plan.md) ／ [文書一覧](README.md)
 
@@ -14,6 +14,7 @@
 | **1.2** | **2026-08-20** | **「3.5 開発用テストデータの投入」を新設。** `scripts/dev-seed.sql` の使い方と、これを Flyway の管理外に置いている理由を記載した。既存の章に変更なし |
 | **1.4** | **2026-09-04** | **「3.2 品質チェック」に「依存の脆弱性通知（Dependabot）」を足した**（#110）。**Dependabot alerts と security updates を有効にした** — 使っている版に脆弱性が公表されたことは、自分では気づけないため。**バージョン更新（`.github/dependabot.yml`）は見送った**ことと、その理由も書いた。**見送る一番の理由は PR の本数ではなく、中身を見ずに緑だからマージするようになること。** 設定は GitHub の画面上にしか残らないので、記録が無いと後から理由を追えない。既存の章に変更なし |
 | **1.3** | **2026-09-02** | **「3.2 品質チェック」を新設**（#103）。`npm run lint` / `npm run test` / `npm run build` / `.\gradlew check` の叩き方と、PR で GitHub Actions が同じことを走らせることを記載。**`npm run dev` が型を見ないこと**を注意点として明記した。既存の章に変更なし |
+| **1.5** | **2026-10-06** | **「2.7 コミット前の秘密情報の検査を有効にする」を新設**（#122）。gitleaks の導入と `git config core.hooksPath .githooks` の2行。**フックを `.git/hooks` ではなくリポジトリ内の `.githooks/` に置いた**のは、`.git/hooks` は GitHub に上がらず、別の PC で何を入れたか分からなくなるため。AWS へのデプロイに入る前に、キーが PUBLIC リポジトリに載る経路を塞ぐ目的。既存の章に変更なし |
 
 ---
 
@@ -138,6 +139,20 @@ npm ci                    # package-lock.json どおりに取得する
 ```
 
 **マイグレーション（Flyway）は Spring Boot の起動時に自動で適用される**ため、個別の実行は不要（[データベース設計](design/database.md) の「スキーマの管理」）。
+
+### 2.7 コミット前の秘密情報の検査を有効にする
+
+このリポジトリは PUBLIC なので、**push した時点で中身が公開される。** AWS のキーなどが混ざったコミットを、コミットの手前で止めるために、[gitleaks](https://github.com/gitleaks/gitleaks) を Git の pre-commit フックとして使う。
+
+```powershell
+winget install --id Gitleaks.Gitleaks     # 入れたらターミナルを開き直す（PATH の反映）
+git config core.hooksPath .githooks       # このリポジトリのフック置き場を Git に教える（PC ごとに1回）
+```
+
+- フックの中身は `.githooks/pre-commit`、検査ルールは `.gitleaks.toml`（gitleaks の標準ルール＋ AWS 公式の例示値の許可）
+- **`core.hooksPath` は PC ごとの設定でリポジトリには入らない。** 別の PC で作業するときは、上の2行をもう一度打つ
+- gitleaks が入っていない状態でフックが有効だと、**コミットは止まる**（検査をすり抜けさせないため）
+- Claude Code のコミットは、これに加えて `.claude/hooks/guard-secrets.ps1` も検査する
 
 ---
 
