@@ -1,0 +1,2 @@
+# Git フックは Git に同梱の sh で動くため、改行を LF に固定する（CRLF だと実行できない）
+.githooks/* text eol=lf
