@@ -225,6 +225,7 @@ JPA は「動いてしまうが間違っている」が起きやすい。**発�
 | **依存の脆弱性通知**（Dependabot alerts ＋ security updates） | #110 | `gh api repos/:owner/:repo/vulnerability-alerts -i` が 204。**バージョン更新は意図的に見送っている**（`.github/dependabot.yml` が無いのは未対応ではない）。理由は `docs/operations.md` 3.2 |
 | **`ErrorBoundary` と API レスポンスの検証** | #109 | 上の「落ちると画面が消えるもの」 |
 | **モーダルのフォーカストラップ**（`<dialog>`） | #113 | 上の「ブラウザの標準機能に寄せたときに見るところ」。**自動テストでは確かめられない** |
+| **コミット前の秘密情報の検査**（gitleaks ＋ `guard-secrets.ps1`） | #122 | `git config --get core.hooksPath` が `.githooks`、`gitleaks version` が通るか。**CI では検査していない**（コミットの手前で止めるのが目的で、push 後では PUBLIC なので手遅れ）。過去の履歴は `gitleaks git . --redact` で全件検査できる |
 
 | 観点 | まだ入っていないもの | 確かめ方 |
 | --- | --- | --- |
