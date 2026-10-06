@@ -34,7 +34,12 @@
       "PowerShell(docker compose ps:*)",
       "PowerShell(docker compose logs:*)",
       "PowerShell(.\\gradlew.bat:*)",
-      "PowerShell(pwsh -File scripts/free-port.ps1:*)"
+      "PowerShell(pwsh -File scripts/free-port.ps1:*)",
+      "PowerShell(aws sts get-caller-identity --profile taskmgmt-readonly:*)",
+      "PowerShell(terraform version:*)",
+      "PowerShell(terraform fmt:*)",
+      "PowerShell(terraform validate:*)",
+      "PowerShell(terraform plan:*)"
     ],
     "deny": [
       "PowerShell(Remove-Item:*)",
@@ -53,7 +58,10 @@
       "PowerShell(gh repo delete:*)",
       "PowerShell(docker compose down -v:*)",
       "PowerShell(docker compose down --volumes:*)",
-      "PowerShell(gh pr merge:*)"
+      "PowerShell(gh pr merge:*)",
+      "PowerShell(terraform apply:*)",
+      "PowerShell(terraform destroy:*)",
+      "Read(~/.aws/**)"
     ]
   },
   "hooks": {
@@ -70,6 +78,11 @@
             "type": "command",
             "command": "pwsh",
             "args": ["-NoProfile", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-ports.ps1"]
+          },
+          {
+            "type": "command",
+            "command": "pwsh",
+            "args": ["-NoProfile", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-aws.ps1"]
           }
         ]
       }
