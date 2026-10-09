@@ -1,0 +1,11 @@
+# 変数の値の見本。
+# このファイルを terraform.tfvars という名前でコピーし、自分の値に書き換えて使う。
+# terraform.tfvars は .gitignore に入っているので、コミットされない。
+
+# 自分の IP アドレス（末尾に /32）。調べ方は README。
+# 下の値は説明用のダミー（文書の例示用に予約されている番号）。
+my_ip_cidr = "203.0.113.10/32"
+
+# 変えたいときだけ書く（書かなければ variables.tf の既定値が使われる）
+# instance_type    = "t3.micro"
+# root_volume_size = 8

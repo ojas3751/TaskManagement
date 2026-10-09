@@ -1,2 +1,8 @@
 # Git フックは Git に同梱の sh で動くため、改行を LF に固定する（CRLF だと実行できない）
 .githooks/* text eol=lf
+
+# Terraform のファイルも LF に固定する。ec2.tf のユーザーデータは Linux のサーバーで
+# シェルスクリプトとして実行されるため、CRLF が混ざると正しく動かないおそれがある
+*.tf text eol=lf
+*.tfvars.example text eol=lf
+.terraform.lock.hcl text eol=lf
