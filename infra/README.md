@@ -2,7 +2,7 @@
 
 このアプリを AWS の上で動かすための、**サーバーやネットワークの設計図**。Terraform という道具が、この設計図のとおりに AWS の上へ作ったり、消したりする。
 
-> **いまは段階 1（EC2 を1台立てて動作確認する）まで。** RDS（データベース）とアプリの配置は、後の段階で足す。進め方と、構成を決めた理由・料金は、デプロイガイド（`docs/deployment/`）の 06・07 にある。
+> **いまは段階 2a（EC2 と RDS を立て、EC2 から RDS につながることを確かめる）まで。** データの退避と復元（段階 2b）とアプリの配置（段階 3）は、後で足す。進め方と、構成を決めた理由・料金は、デプロイガイド（`docs/deployment/`）の 06・07 にある。
 
 ---
 
@@ -12,16 +12,17 @@
 | --- | --- | --- |
 | [versions.tf](versions.tf) | Terraform と AWS プロバイダ（AWS を操作する部品）の版、東京リージョン | — |
 | [variables.tf](variables.tf) | 外から渡す値の一覧（自分の IP、サーバーの種類など） | — |
-| [network.tf](network.tf) | VPC・サブネット・インターネットゲートウェイ・経路の表 | 無料 |
-| [security.tf](security.tf) | セキュリティグループ（自分の IP からの HTTP だけ通す） | 無料 |
-| [iam.tf](iam.tf) | EC2 に持たせる権限（Session Manager で入るため） | 無料 |
-| [ec2.tf](ec2.tf) | EC2 `t3.micro`・ディスク 8GB・動作確認用のページ | **動かしている間だけかかる** |
+| [network.tf](network.tf) | VPC・パブリックサブネット・インターネットゲートウェイ・経路の表、RDS 用のプライベートサブネット 2つ | 無料 |
+| [security.tf](security.tf) | セキュリティグループ（EC2 は自分の IP からの HTTP だけ、RDS は EC2 からの 5432 だけ） | 無料 |
+| [iam.tf](iam.tf) | EC2 に持たせる権限（Session Manager で入る、DB のパスワードを読む） | 無料 |
+| [ec2.tf](ec2.tf) | EC2 `t3.micro`・ディスク 8GB・動作確認用のページ・PostgreSQL のクライアント | **動かしている間だけかかる** |
+| [rds.tf](rds.tf) | RDS `db.t3.micro`（PostgreSQL 17・gp3 20GB）、パスワードとその置き場（パラメータストア） | **動かしている間だけかかる** |
 | [alarm.tf](alarm.tf) | 1時間ほぼ何もしていなければ EC2 を終了するアラーム | 無料枠の範囲 |
-| [outputs.tf](outputs.tf) | 作った後に表示する値（URL、サーバーに入るコマンド） | — |
+| [outputs.tf](outputs.tf) | 作った後に表示する値（URL、サーバーに入るコマンド、RDS につなぐコマンド） | — |
 
-動かしている間の料金は、**約 $0.02/時**（EC2・ディスク・パブリック IPv4）。
+動かしている間の料金は、**約 $0.052/時**（EC2 側 約 $0.020 ＋ RDS 側 約 $0.032）。
 
-読む順番のおすすめ：`network.tf` → `security.tf` → `iam.tf` → `ec2.tf` → `alarm.tf`。外側（ネットワーク）から内側（サーバー）へ向かう順になっている。
+読む順番のおすすめ：`network.tf` → `security.tf` → `iam.tf` → `ec2.tf` → `rds.tf` → `alarm.tf`。外側（ネットワーク）から内側（サーバーとデータベース）へ向かう順になっている。
 
 ---
 
@@ -86,10 +87,40 @@ apply が終わると、URL とコマンドが表示される（後からは `te
 3. **サーバーに入れるか**：表示された `session_manager_command` を実行する。入れたら `df -h` でディスクの使用量を見る。`exit` で出る
 4. **終わったら destroy する**
 
+### 段階 2a：EC2 から RDS につながるか
+
+RDS は、作るのに数分かかる（実測で 5分28秒）。apply の途中で止まって見えても、待っていてよい。
+
+| コマンド | 打つ場所 |
+| --- | --- |
+| `terraform ...`、`aws ssm start-session ...`、`Test-NetConnection ...` | **PC**（PowerShell。`PS C:\...>` の画面） |
+| `PGPASSWORD=... psql ...`、SQL、`\q`、`exit` | **サーバーの中**（`sh-5.2$` の画面） |
+
+1. Session Manager でサーバーに入る（上の 3）
+2. RDS につなぐコマンドを表示する。**`terraform` は PC にしか無いので、PC の別のターミナル**（VS Code / Cursor のターミナルの「＋」）で実行する:
+   ```powershell
+   terraform -chdir=infra output -raw db_connect_command
+   ```
+   表示された1行をコピーし、**サーバーの中**（`sh-5.2$` の画面）に貼り付けて実行する。`taskmanagement=>` と出れば、RDS につながっている
+3. 試しの表を作り、1行入れて読む:
+   ```sql
+   CREATE TABLE ping (id serial PRIMARY KEY, note text);
+   INSERT INTO ping (note) VALUES ('hello from EC2');
+   SELECT * FROM ping;
+   ```
+4. `\q` で psql を抜け、`exit` でサーバーから出る
+5. **EC2 以外からつながらないか**：PC の PowerShell で、RDS の住所（`db_endpoint`）のポート 5432 につながるか試す。`TcpTestSucceeded : False` と出れば正しい（RDS の住所は VPC の中の番号に変わるので、PC からは届かない）
+   ```powershell
+   Test-NetConnection (terraform -chdir=infra output -raw db_endpoint) -Port 5432
+   ```
+
+試しの表は、destroy で RDS ごと消える。
+
 ---
 
 ## 知っておくこと
 
 - **state ファイル**（`terraform.tfstate`）は、Terraform が「何を作ったか」を覚えておくファイル。このフォルダにでき、`.gitignore` 済み。**消すと destroy できなくなる**ので、手で消さない
-- **1時間ほぼ何もしないと、EC2 は自動で終了する**（`alarm.tf`）。そのときはメールが届く。ネットワークなどの無料の部品は残るので、後で destroy する
+- **1時間ほぼ何もしないと、EC2 は自動で終了する**（`alarm.tf`）。そのときはメールが届く。**RDS は終了されずに動き続ける**（アラームが操作できるのは EC2 だけ）。RDS は毎晩の安全装置が止めるが、止めても料金の一部（ディスク）はかかるので、気づいたら destroy する
+- **DB のパスワードは state ファイルに書かれる**（`rds.tf`）。state を人に渡したり、貼り付けたりしない
 - **SSH の入口は開けていない。** サーバーに入るのは Session Manager だけ

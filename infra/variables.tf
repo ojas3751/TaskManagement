@@ -36,6 +36,18 @@ variable "root_volume_size" {
   default     = 8 # Amazon Linux 2023 が配られている大きさ。見積もりはデプロイガイド 06
 }
 
+variable "db_instance_class" {
+  description = "RDS の種類（CPU とメモリの大きさ）"
+  type        = string
+  default     = "db.t3.micro" # x64・メモリ 1GB。決めた理由と料金の比較はデプロイガイド 06
+}
+
+variable "db_engine_version" {
+  description = "PostgreSQL の版。PC の compose.yaml（postgres:17）と大きい番号をそろえる"
+  type        = string
+  default     = "17"
+}
+
 variable "alert_topic_name" {
   description = "アラームの通知先にする SNS トピックの名前。安全装置の通知先と同じものを使う"
   type        = string

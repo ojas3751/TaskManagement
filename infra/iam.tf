@@ -2,7 +2,7 @@
 # EC2 に持たせる権限（IAM ロール）
 # =============================================================================
 #
-# サーバー自身が AWS の機能を使うための権限。今は Session Manager だけ。
+# サーバー自身が AWS の機能を使うための権限。Session Manager と、DB のパスワードを読むこと。
 # Session Manager を使うと、SSH の入口を開けずに、ブラウザやコマンドからサーバーに入れる。
 #
 # 仕組みは3段:
@@ -34,6 +34,26 @@ resource "aws_iam_role" "ec2" {
 resource "aws_iam_role_policy_attachment" "ssm" {
   role       = aws_iam_role.ec2.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# DB のパスワードを、パラメータストアから読む権限（rds.tf）。
+# 読めるのは、このプロジェクトのパスワードの1つだけ。
+# 復号に使う鍵（aws/ssm）は AWS が用意したもので、同じアカウントの中から
+# パラメータストア経由で使う分には、ここで別に許可しなくてよい。
+resource "aws_iam_role_policy" "read_db_password" {
+  name = "read-db-password"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = aws_ssm_parameter.db_password.arn
+      }
+    ]
+  })
 }
 
 resource "aws_iam_instance_profile" "ec2" {

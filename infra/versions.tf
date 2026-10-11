@@ -17,6 +17,12 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.68"
     }
+
+    # 乱数を作るための部品。DB のパスワードを作るのに使う（rds.tf）。
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
+    }
   }
 }
 
