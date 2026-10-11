@@ -89,10 +89,19 @@ apply が終わると、URL とコマンドが表示される（後からは `te
 
 ### 段階 2a：EC2 から RDS につながるか
 
-RDS は、作るのに 10 分前後かかることがある。apply の途中で止まって見えても、待っていてよい。
+RDS は、作るのに数分かかる（実測で 5分28秒）。apply の途中で止まって見えても、待っていてよい。
+
+| コマンド | 打つ場所 |
+| --- | --- |
+| `terraform ...`、`aws ssm start-session ...`、`Test-NetConnection ...` | **PC**（PowerShell。`PS C:\...>` の画面） |
+| `PGPASSWORD=... psql ...`、SQL、`\q`、`exit` | **サーバーの中**（`sh-5.2$` の画面） |
 
 1. Session Manager でサーバーに入る（上の 3）
-2. 表示された `db_connect_command` を、そのまま貼り付けて実行する。`taskmanagement=>` と出れば、RDS につながっている
+2. RDS につなぐコマンドを表示する。**`terraform` は PC にしか無いので、PC の別のターミナル**（VS Code / Cursor のターミナルの「＋」）で実行する:
+   ```powershell
+   terraform -chdir=infra output -raw db_connect_command
+   ```
+   表示された1行をコピーし、**サーバーの中**（`sh-5.2$` の画面）に貼り付けて実行する。`taskmanagement=>` と出れば、RDS につながっている
 3. 試しの表を作り、1行入れて読む:
    ```sql
    CREATE TABLE ping (id serial PRIMARY KEY, note text);
