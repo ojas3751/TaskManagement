@@ -46,11 +46,12 @@ resource "aws_instance" "web" {
   }
 
   # サーバーを作った直後に1回だけ実行される手順（ユーザーデータ）。
-  # 段階 1 の動作確認用に、Web サーバー（nginx）を入れて簡単なページを出す。
+  #   ・動作確認用に、Web サーバー（nginx）を入れて簡単なページを出す（段階 1）
+  #   ・RDS につなぐための PostgreSQL のクライアント（psql）を入れる（段階 2）
   # 段階 3 で、ここをアプリを動かす手順に置き換える。
   user_data = <<-EOF
     #!/bin/bash
-    dnf install -y nginx
+    dnf install -y nginx postgresql17
     echo '<h1>taskmgmt: EC2 is running</h1>' > /usr/share/nginx/html/index.html
     systemctl enable --now nginx
   EOF

@@ -77,3 +77,34 @@ resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
+
+# -----------------------------------------------------------------------------
+# プライベートサブネット（RDS を置く場所）
+# -----------------------------------------------------------------------------
+#
+# インターネットとつながらない場所。上の経路の表（インターネットゲートウェイ行き）を
+# 紐付けないので、VPC の中どうしの通信しかできない。データベースを外から遠ざけるため。
+#
+# RDS は「2つ以上のアベイラビリティゾーンにまたがるサブネット」を要求するので、2つ作る。
+# 実際に RDS が置かれるのは片方だけ（rds.tf で 1a を指定。EC2 と同じ場所にそろえる）。
+# もう片方は、AWS の決まりを満たすためにある。
+
+resource "aws_subnet" "private_a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.11.0/24"
+  availability_zone = "${var.region}a"
+
+  tags = {
+    Name = "taskmgmt-private-a"
+  }
+}
+
+resource "aws_subnet" "private_c" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.12.0/24"
+  availability_zone = "${var.region}c"
+
+  tags = {
+    Name = "taskmgmt-private-c"
+  }
+}
