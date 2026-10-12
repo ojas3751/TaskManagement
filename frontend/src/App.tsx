@@ -29,6 +29,7 @@ import {
   withMovedCard,
   withReorderedCard,
 } from './lib/moveCard'
+import { newId } from './lib/newId'
 import { withListOrder, withSwappedList } from './lib/reorderLists'
 import { BoardView } from './components/BoardView'
 import { CardDetailModal, type CardDetailInput } from './components/CardDetailModal'
@@ -276,7 +277,7 @@ export default function App() {
       // 応答待ちの間は盤面が inert なのでここには来ないが、保険として置く
       if (isBusy) return
 
-      const id = crypto.randomUUID()
+      const id = newId()
       setActionError(null)
 
       setState((prev) =>
@@ -446,7 +447,7 @@ export default function App() {
       // 応答待ちの間は盤面が inert なのでここには来ないが、保険として置く
       if (isBusy) return
 
-      const id = crypto.randomUUID()
+      const id = newId()
       setActionError(null)
 
       setState((prev) => {
