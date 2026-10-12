@@ -76,8 +76,11 @@ function Invoke-OnServer {
 
     $commands = New-ServerCommands -Out $Out -ScriptName $ScriptName -Body $Body -Env $Env -Bare:$Bare
     $paramFile = Join-Path ([System.IO.Path]::GetTempPath()) "taskmgmt-ssm-$([guid]::NewGuid()).json"
-    @{ commands = $commands; executionTimeout = @('1800') } |
-        ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $paramFile
+    # 日本語を \uXXXX の形に置き換え、英数字だけのファイルにする。
+    # Windows の AWS CLI は file:// のファイルを Windows の文字コード（日本語なら Shift_JIS 系）で
+    # 読むため、UTF-8 の日本語がそのまま入っていると読めずに止まる。JSON の決まった書き方なので、
+    # AWS 側では元の日本語に戻る。
+    ConvertTo-ServerParameters $commands | Set-Content -Encoding ascii $paramFile
     try {
         $cmdId = Invoke-Aws ssm send-command --region $Out.region `
             --instance-ids $Out.instance_id --document-name AWS-RunShellScript `
@@ -99,6 +102,12 @@ function Invoke-OnServer {
     $output = ($inv.StandardOutputContent + "`n" + $inv.StandardErrorContent).Trim()
     if (-not $Bare -and $output) { Write-Host $output }
     return @{ Status = $inv.Status; Code = $inv.ResponseCode; Output = $output }
+}
+
+# Run Command の --parameters に渡す JSON を作る（英数字だけ）。AWS には触らない。
+function ConvertTo-ServerParameters($Commands) {
+    return @{ commands = $Commands; executionTimeout = @('1800') } |
+        ConvertTo-Json -Depth 5 -EscapeHandling EscapeNonAscii
 }
 
 # EC2 に送る命令（Run Command の commands）を組み立てる。AWS には触らない。
