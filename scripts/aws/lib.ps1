@@ -99,7 +99,7 @@ function Invoke-OnServer {
         if ($inv.Status -notin @('Pending', 'InProgress', 'Delayed')) { break }
     }
 
-    $output = ($inv.StandardOutputContent + "`n" + $inv.StandardErrorContent).Trim()
+    $output = ConvertFrom-ServerOutput ($inv.StandardOutputContent + "`n" + $inv.StandardErrorContent).Trim()
     if (-not $Bare -and $output) { Write-Host $output }
     return @{ Status = $inv.Status; Code = $inv.ResponseCode; Output = $output }
 }
@@ -146,6 +146,24 @@ function New-ServerCommands {
     $commands.Add("cat > /tmp/taskmgmt-job.sh <<'TASKMGMT_EOF'")
     $commands.AddRange($lines)
     $commands.Add('TASKMGMT_EOF')
-    $commands.Add('rc=0; bash /tmp/taskmgmt-job.sh || rc=$?; rm -f /tmp/taskmgmt-job.sh; exit $rc')
+    # 実行して、画面に出たものを英数字だけの形（日本語は \uXXXX）にしてから返す。
+    # Windows の AWS CLI は、返ってきた日本語を Windows の文字コードで出力するため、
+    # 一部の文字（「表」「ソ」など）が JSON の \ と見分けがつかなくなり、受け取れなくなる。
+    # PC 側で ConvertFrom-ServerOutput を使って日本語に戻す。
+    $commands.Add('rc=0; bash /tmp/taskmgmt-job.sh > /tmp/taskmgmt-out.txt 2>&1 || rc=$?')
+    $commands.Add('python3 -c ''import sys; sys.stdout.write(open("/tmp/taskmgmt-out.txt", encoding="utf-8", errors="replace").read().encode("ascii", "backslashreplace").decode("ascii"))''')
+    $commands.Add('rm -f /tmp/taskmgmt-job.sh /tmp/taskmgmt-out.txt; exit $rc')
     return , $commands
+}
+
+# EC2 から返ってきた英数字だけの表示（\uXXXX など）を、日本語に戻す。
+function ConvertFrom-ServerOutput([string]$Text) {
+    if (-not $Text) { return $Text }
+    $Text = [regex]::Replace($Text, '\\U([0-9a-fA-F]{8})',
+        { param($m) [char]::ConvertFromUtf32([Convert]::ToInt32($m.Groups[1].Value, 16)) })
+    $Text = [regex]::Replace($Text, '\\u([0-9a-fA-F]{4})',
+        { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) })
+    $Text = [regex]::Replace($Text, '\\x([0-9a-fA-F]{2})',
+        { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) })
+    return $Text
 }
