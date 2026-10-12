@@ -1,0 +1,34 @@
+# =============================================================================
+# API（Spring Boot）を動かす仕組み（EC2 の /etc/systemd/system/taskmgmt-api.service になる）
+# =============================================================================
+#
+# systemd は、Linux でサーバーのプログラムを起動・停止・見張りする仕組み。
+#   systemctl start taskmgmt-api    起動
+#   systemctl stop taskmgmt-api     停止
+#   systemctl status taskmgmt-api   状態を見る
+#   journalctl -u taskmgmt-api      ログを見る
+
+[Unit]
+Description=taskmgmt API (Spring Boot)
+After=network-online.target
+Wants=network-online.target
+# アプリ（jar）がまだ置かれていなければ起動しない（deploy.sh が置く）
+ConditionPathExists=/opt/taskmgmt/app.jar
+
+[Service]
+Type=simple
+# 管理者（root）ではなく、このアプリ専用の利用者で動かす
+User=taskmgmt
+Group=taskmgmt
+# DB の接続先など（パスワード以外）。deploy.sh が書く
+EnvironmentFile=/etc/taskmgmt/app.env
+# パスワードをパラメータストアから読んでから、Java を起動する（run.sh）
+ExecStart=/opt/taskmgmt/run.sh
+# 落ちたら 5 秒後に自動で起動し直す
+Restart=on-failure
+RestartSec=5
+# 止めるときに Java が返す終了コード（143）を「正常に止まった」と扱う
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

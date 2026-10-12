@@ -40,6 +40,100 @@ function Get-InfraOutputs {
     return $result
 }
 
+# S3 バケット（バックアップとアプリの置き場）の名前。infra/persistent の記録から読む。
+# infra をまだ apply していなくても読めるように、infra の output ではなくこちらを使う。
+function Get-BucketName {
+    $name = & terraform "-chdir=$(Join-Path $InfraDir 'persistent')" output -raw backup_bucket_name
+    if ($LASTEXITCODE -ne 0 -or -not $name) { throw 'S3 バケットの名前を読めません（infra/persistent を apply しましたか？）' }
+    return $name
+}
+
+# ファイルの SHA-256 を base64 で返す（S3 のチェックサムと、EC2 側の sha256_b64 と同じ形）。
+function Get-Sha256Base64([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try { return [Convert]::ToBase64String($sha.ComputeHash($stream)) } finally { $stream.Dispose(); $sha.Dispose() }
+}
+
+# S3 にファイルを、チェックサム付きで置き、版の ID を返す。
+# 途中で壊れていたら S3 が受け取りを拒否する。
+function Send-S3Object([string]$Bucket, [string]$Region, [string]$Key, [string]$Path) {
+    $sum = Get-Sha256Base64 $Path
+    $ver = Invoke-Aws s3api put-object --region $Region --bucket $Bucket --key $Key --body $Path `
+        --checksum-algorithm SHA256 --checksum-sha256 $sum --query VersionId --output text
+    return @{ version_id = $ver; sha256_b64 = $sum; size = (Get-Item $Path).Length }
+}
+
+# S3 にアプリ（artifacts/latest.json）があるか
+function Test-AppArtifact([string]$Bucket, [string]$Region) {
+    $n = Invoke-Aws s3api list-objects-v2 --region $Region --bucket $Bucket --prefix 'artifacts/latest.json' `
+        --query "length(Contents[?Key=='artifacts/latest.json'] || ``[]``)" --output text
+    return ($n -eq '1')
+}
+
+# PC でアプリをビルドし、S3 の artifacts/ に置く。
+#   API：backend で gradlew bootJar → jar 1つ
+#   画面：frontend で npm ci → npm run build → dist の中身を tar.gz に
+#   記録（latest.json）：それぞれの版の ID とチェックサム、ビルドしたコミット
+function Publish-AppBuild([string]$Region = 'ap-northeast-1') {
+    $bucket = Get-BucketName
+
+    $commit = (& git -C $RepoRoot rev-parse --short HEAD).Trim()
+    $dirty = [bool](& git -C $RepoRoot status --porcelain)
+    if ($dirty) {
+        Write-Warn 'まだコミットしていない変更があります。その変更も含めてビルドします（記録には +dirty と残します）。'
+        $commit = "$commit+dirty"
+    }
+
+    Write-Host 'API をビルドします（gradlew bootJar）'
+    Push-Location (Join-Path $RepoRoot 'backend')
+    try {
+        & .\gradlew.bat bootJar -q
+        if ($LASTEXITCODE -ne 0) { throw 'API のビルドに失敗しました' }
+    } finally { Pop-Location }
+    $jar = Get-ChildItem (Join-Path $RepoRoot 'backend\build\libs') -Filter '*.jar' |
+        Where-Object { $_.Name -notlike '*-plain.jar' } | Sort-Object LastWriteTime | Select-Object -Last 1
+    if (-not $jar) { throw 'API の jar が見つかりません' }
+
+    Write-Host '画面をビルドします（npm ci → npm run build）'
+    Push-Location (Join-Path $RepoRoot 'frontend')
+    try {
+        & npm ci --no-audit --no-fund --loglevel=error
+        if ($LASTEXITCODE -ne 0) { throw 'npm ci に失敗しました' }
+        & npm run build --silent
+        if ($LASTEXITCODE -ne 0) { throw '画面のビルドに失敗しました' }
+    } finally { Pop-Location }
+
+    $work = Join-Path ([System.IO.Path]::GetTempPath()) "taskmgmt-build-$([guid]::NewGuid())"
+    New-Item -ItemType Directory $work | Out-Null
+    try {
+        $web = Join-Path $work 'web.tar.gz'
+        & tar -czf $web -C (Join-Path $RepoRoot 'frontend\dist') .
+        if ($LASTEXITCODE -ne 0) { throw '画面のファイルをまとめられませんでした' }
+
+        Write-Host 'S3 に置きます'
+        $jarInfo = Send-S3Object $bucket $Region 'artifacts/app.jar' $jar.FullName
+        $webInfo = Send-S3Object $bucket $Region 'artifacts/web.tar.gz' $web
+        $manifest = Join-Path $work 'latest.json'
+        @{
+            built_at = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            commit   = $commit
+            jar      = $jarInfo
+            web      = $webInfo
+        } | ConvertTo-Json -Depth 3 | Set-Content -Encoding ascii $manifest
+        Send-S3Object $bucket $Region 'artifacts/latest.json' $manifest | Out-Null
+        Write-Ok ("S3 に置きました（コミット {0}、API {1:N1} MB）" -f $commit, ($jarInfo.size / 1MB))
+    } finally {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# EC2 で、S3 のアプリを取り出して入れ替え、起動を確かめる。成功したら $true。
+function Install-AppOnServer([hashtable]$Out) {
+    $r = Invoke-OnServer -Out $Out -ScriptName 'deploy.sh'
+    return ($r.Status -eq 'Success' -and $r.Last -eq 'DEPLOY_OK')
+}
+
 # EC2 が Session Manager / Run Command を受け付けるようになり、
 # 起動直後の手順（ユーザーデータ：psql のインストールなど）が終わるまで待つ。
 function Wait-ServerReady([hashtable]$Out) {

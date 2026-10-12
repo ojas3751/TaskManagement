@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-作業の始め：AWS にサーバーと DB を作り（apply）、S3 のバックアップから DB を復元する。
+作業の始め：AWS にサーバーと DB を作り（apply）、S3 のバックアップから DB を復元して、アプリを起動する。
 
 .DESCRIPTION
 リポジトリのいちばん上のフォルダで、次のように実行する:
@@ -12,13 +12,16 @@
   3. DB が空なら、S3 の最新のバックアップから復元し、件数を照らし合わせる
      ・DB に表が既にあれば、復元しない（既にあるデータを壊さないため）
      ・バックアップがまだ無ければ、空の DB のまま始める
+  4. アプリ（画面と API）を S3 から取り出して起動する。必ず 3 の後に行う
+     （先に API を起動すると、Flyway が空の DB に初期データを入れ、3 の「DB が空」の確認で復元できなくなる）
+     ・S3 にアプリがまだ無ければ、PC でビルドして置いてから起動する
 
 ここから従量課金が始まる。作業の終わりには、必ず stop.ps1 を実行する。
 #>
 
 . (Join-Path $PSScriptRoot 'lib.ps1')
 
-Write-Step '1/3 AWS にサーバーと DB を作ります（terraform apply）'
+Write-Step '1/4 AWS にサーバーと DB を作ります（terraform apply）'
 Write-Warn 'ここから従量課金が始まります。作業の終わりには stop.ps1 を実行してください。'
 & terraform "-chdir=$InfraDir" apply
 if ($LASTEXITCODE -ne 0) {
@@ -31,10 +34,10 @@ if (-not $out.instance_id) {
     exit 1
 }
 
-Write-Step '2/3 サーバーの準備を待ちます'
+Write-Step '2/4 サーバーの準備を待ちます'
 Wait-ServerReady $out
 
-Write-Step '3/3 DB を復元します'
+Write-Step '3/4 DB を復元します'
 $r = Invoke-OnServer -Out $out -ScriptName 'restore.sh'
 $last = $r.Last
 
@@ -46,12 +49,22 @@ if ($r.Status -eq 'Success' -and $last -eq 'RESTORE_OK') {
     Write-Warn 'DB に既にデータがあるので、復元しませんでした（前回の DB が残っていた可能性があります）。'
 } else {
     Write-Bad "復元に失敗しました（状態: $($r.Status)、終了コード: $($r.Code)）。"
-    Write-Bad 'アプリを使い始める前に、上の表示を確認してください。このまま stop.ps1 で退避すると、'
+    Write-Bad 'アプリは起動していません。上の表示を確認してください。このまま stop.ps1 で退避すると、'
     Write-Bad '空の DB を退避しようとして、件数の確認で止まります（良いバックアップは守られます）。'
     exit 1
 }
 
-# 段階 3 で、ここに「アプリを起動する」を足す。必ず復元の後に行う。
+Write-Step '4/4 アプリ（画面と API）を起動します'
+if (-not (Test-AppArtifact (Get-BucketName) $out.region)) {
+    Write-Warn 'S3 にアプリがまだ無いので、PC でビルドして置きます。'
+    Publish-AppBuild $out.region
+}
+if (-not (Install-AppOnServer $out)) {
+    Write-Bad 'アプリの起動に失敗しました。上の表示（API のログ）を確認してください。'
+    Write-Bad 'サーバーと DB は動いています（料金がかかっています）。直したら deploy.ps1、やめるなら stop.ps1 を実行してください。'
+    exit 1
+}
 
 Write-Host ''
-Write-Ok "準備ができました。作業の終わりには、必ず次を実行してください: pwsh scripts/aws/stop.ps1"
+Write-Ok "準備ができました。ブラウザで開いてください: $($out.web_url)"
+Write-Ok '作業の終わりには、必ず次を実行してください: pwsh scripts/aws/stop.ps1'

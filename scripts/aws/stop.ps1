@@ -8,7 +8,7 @@
 
 流れ:
   1. サーバーと DB が動いているか確かめる（安全装置で止まっていたら起動し直す）
-  2. 退避（EC2 の中で pg_dump → 読めるか検査 → S3 に置く → 置けたか確認）
+  2. API を止めてから、退避（EC2 の中で pg_dump → 読めるか検査 → S3 に置く → 置けたか確認）
      ・前回1件以上あった表が 0 件になっていたら止めて、確認を求める
   3. 2 がすべて成功したときだけ、terraform destroy（消す一覧を見て yes と入力する）
 
@@ -56,6 +56,15 @@ Wait-ServerReady $out
 # -----------------------------------------------------------------------------
 Write-Step '2/3 DB を S3 に退避します'
 
+# 退避の前に API を止める。止めずに退避すると、退避した後にブラウザから書き込んだ分が、
+# destroy で消えてしまうため。退避に失敗して destroy しなかったときは、deploy.ps1 で起動し直せる。
+$stopApi = Invoke-OnServer -Out $out -Body 'systemctl stop taskmgmt-api 2>/dev/null || true' -Bare
+if ($stopApi.Status -ne 'Success') {
+    Write-Bad 'API を止められませんでした。退避も destroy もしていません。'
+    exit 1
+}
+Write-Host 'API を止めました（これ以降、ブラウザからの書き込みはできません）'
+
 $r = Invoke-OnServer -Out $out -ScriptName 'backup.sh' -Env @{ FORCE = '0' }
 $last = $r.Last
 
@@ -67,6 +76,7 @@ if ($last -eq 'BACKUP_BLOCKED') {
     $answer = Read-Host '続けますか？（YES で続ける。それ以外は中止）'
     if ($answer -cne 'YES') {
         Write-Bad '中止しました。destroy はしていません（サーバーと DB は残っていて、料金がかかり続けます）。'
+        Write-Bad 'API は止まっています。続けて使うなら deploy.ps1 で起動し直してください。'
         exit 1
     }
     $r = Invoke-OnServer -Out $out -ScriptName 'backup.sh' -Env @{ FORCE = '1' }
@@ -76,6 +86,7 @@ if ($last -eq 'BACKUP_BLOCKED') {
 if ($r.Status -ne 'Success' -or $last -ne 'BACKUP_OK') {
     Write-Bad "退避に失敗しました（状態: $($r.Status)、終了コード: $($r.Code)）。"
     Write-Bad 'destroy はしていません。データは DB に残っています（料金はかかり続けます）。上の表示を確認してください。'
+    Write-Bad 'API は止まっています。続けて使うなら deploy.ps1 で起動し直してください。'
     exit 1
 }
 Write-Ok '退避しました。'
