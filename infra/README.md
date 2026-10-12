@@ -2,7 +2,18 @@
 
 このアプリを AWS の上で動かすための、**サーバーやネットワークの設計図**。Terraform という道具が、この設計図のとおりに AWS の上へ作ったり、消したりする。
 
-> **いまは段階 2a（EC2 と RDS を立て、EC2 から RDS につながることを確かめる）まで。** データの退避と復元（段階 2b）とアプリの配置（段階 3）は、後で足す。進め方と、構成を決めた理由・料金は、デプロイガイド（`docs/deployment/`）の 06・07 にある。
+> **いまは段階 2b（EC2 と RDS を立て、DB を S3 に退避・復元できる）まで。** アプリの配置（段階 3）は、後で足す。進め方と、構成を決めた理由・料金は、デプロイガイド（`docs/deployment/`）の 06・07 にある。
+
+> **作業の始めと終わりは、`scripts/aws/start.ps1` と `stop.ps1` を使う**（[scripts/aws/README.md](../scripts/aws/README.md)）。`terraform destroy` を直接打つと、DB が退避されずに消える。
+
+このフォルダには、Terraform が2つある。
+
+| フォルダ | 作るもの | いつ消すか |
+| --- | --- | --- |
+| `infra/`（ここ） | ネットワーク・EC2・RDS など | **作業のたびに作って消す** |
+| [infra/persistent/](persistent/) | バックアップの置き場（S3 バケット） | **消さない**（記録＝state も別なので、`infra` の destroy では消えない） |
+
+`infra` は `infra/persistent` の記録からバケットの名前を読むので、**先に `infra/persistent` を apply しておく**必要がある。
 
 ---
 
@@ -17,6 +28,7 @@
 | [iam.tf](iam.tf) | EC2 に持たせる権限（Session Manager で入る、DB のパスワードを読む） | 無料 |
 | [ec2.tf](ec2.tf) | EC2 `t3.micro`・ディスク 8GB・動作確認用のページ・PostgreSQL のクライアント | **動かしている間だけかかる** |
 | [rds.tf](rds.tf) | RDS `db.t3.micro`（PostgreSQL 17・gp3 20GB）、パスワードとその置き場（パラメータストア） | **動かしている間だけかかる** |
+| [backup.tf](backup.tf) | S3 への近道（ゲートウェイエンドポイント）、EC2 にバックアップの置き場を読み書きする権限 | 無料 |
 | [alarm.tf](alarm.tf) | 1時間ほぼ何もしていなければ EC2 を終了するアラーム | 無料枠の範囲 |
 | [outputs.tf](outputs.tf) | 作った後に表示する値（URL、サーバーに入るコマンド、RDS につなぐコマンド） | — |
 

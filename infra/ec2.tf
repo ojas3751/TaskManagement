@@ -47,11 +47,13 @@ resource "aws_instance" "web" {
 
   # サーバーを作った直後に1回だけ実行される手順（ユーザーデータ）。
   #   ・動作確認用に、Web サーバー（nginx）を入れて簡単なページを出す（段階 1）
-  #   ・RDS につなぐための PostgreSQL のクライアント（psql）を入れる（段階 2）
+  #   ・RDS につなぐための PostgreSQL のクライアント（psql・pg_dump・pg_restore）を入れる（段階 2）
+  #   ・退避・復元の手順（scripts/aws/remote）が使う python3 と openssl を入れる（段階 2b。
+  #     Amazon Linux 2023 には最初から入っているが、確実にするため）
   # 段階 3 で、ここをアプリを動かす手順に置き換える。
   user_data = <<-EOF
     #!/bin/bash
-    dnf install -y nginx postgresql17
+    dnf install -y nginx postgresql17 python3 openssl
     echo '<h1>taskmgmt: EC2 is running</h1>' > /usr/share/nginx/html/index.html
     systemctl enable --now nginx
   EOF

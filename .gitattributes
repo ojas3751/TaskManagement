@@ -4,5 +4,7 @@
 # Terraform のファイルも LF に固定する。ec2.tf のユーザーデータは Linux のサーバーで
 # シェルスクリプトとして実行されるため、CRLF が混ざると正しく動かないおそれがある
 *.tf text eol=lf
+# EC2 の中で bash として実行する手順（scripts/aws/remote）も同じ理由で LF に固定する
+*.sh text eol=lf
 *.tfvars.example text eol=lf
 .terraform.lock.hcl text eol=lf
