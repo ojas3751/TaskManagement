@@ -1,6 +1,6 @@
 ---
 name: quality-review
-description: このリポジトリの品質チェック。フロントエンド（React 19 + TypeScript + Vite）とバックエンド（Spring Boot + JPA）を実務水準・各フレームワークの定石に照らしてレビューし、実装とドキュメント（要件定義書・機能仕様書・画面設計書・API設計書・DB設計書）の食い違いを洗い出す手順。「品質チェックをして」「レビューして」「実装を見てほしい」「おかしいところはないか」「lint を回して」「ドキュメントと実装が合っているか確認して」「デファクトスタンダードから外れていないか」と言われたとき、および PR を出す前の最終確認では必ずこれを参照すること。**推測で件数や問題点を語る前に、ここに書いてあるコマンドを実際に走らせること。** 見積もりと実測は外れる。
+description: このリポジトリの品質チェック。フロントエンド（React 19 + TypeScript + Vite）とバックエンド（Spring Boot + JPA）を実務水準・各フレームワークの定石に照らしてレビューし、Terraform（infra/）と AWS の作業のスクリプト（scripts/aws/）を変えたときの検査も行い、実装とドキュメント（要件定義書・機能仕様書・画面設計書・API設計書・DB設計書）の食い違いを洗い出す手順。「品質チェックをして」「レビューして」「実装を見てほしい」「おかしいところはないか」「lint を回して」「ドキュメントと実装が合っているか確認して」「デファクトスタンダードから外れていないか」と言われたとき、および PR を出す前の最終確認では必ずこれを参照すること。**推測で件数や問題点を語る前に、ここに書いてあるコマンドを実際に走らせること。** 見積もりと実測は外れる。
 ---
 
 # 品質レビュー
@@ -24,6 +24,23 @@ cd ..\backend
 ```
 
 **`npm run dev` が通ることは、型が通ることの証明にならない。** Vite は型チェックを省く。#103 では、未定義の識別子を参照したまま `npm run build` が失敗する状態が main に入っていた。手元では動いてしまい、誰も気づかなかった。**「動きました」で済ませず、`npm run build` を通すこと。**
+
+**`infra/`（Terraform）と `scripts/aws/`（AWS の作業のスクリプト）を変えたときは、これも走らせる。** CI はこの2つを検査していない（下の「仕組みそのものを見る」）。
+
+```powershell
+$env:AWS_PROFILE = 'taskmgmt-readonly'   # AI が使ってよいのはこのプロファイルだけ
+terraform -chdir=infra fmt -check
+terraform -chdir=infra validate
+terraform -chdir=infra/persistent validate
+terraform -chdir=infra plan              # 「消す」「作り直す」が意図せず並んでいないか読む
+
+# PowerShell の文法検査（実行はしない）
+foreach ($f in Get-ChildItem scripts/aws -Filter *.ps1) {
+  $e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$e); "$($f.Name): $($e.Count)"
+}
+```
+
+`plan` の保存ファイルが要らなければ `-out` を付けない。**PowerShell で `-out=$null` と書くと、`$null` という名前のファイルができる**（アカウント ID や自宅の IP が入りうる。#125 で実際に作ってしまった）。
 
 `gradlew check` は `test` を UP-TO-DATE で飛ばすことがある。実際に走らせたいときは `.\gradlew test --rerun`。件数は `backend/build/test-results/test/*.xml` から数える。
 
@@ -122,6 +139,45 @@ git update-index --chmod=+x <path>     # 直す
 ```
 
 **実行されるスクリプトを新しく足したときは必ず見ること。** シェルスクリプト、フック、CI から叩くもの。
+
+---
+
+## 手元の試験が緑でも AWS では落ちる
+
+`scripts/aws/` は、PC の Docker（EC2 と同じ Amazon Linux 2023 ＋本物の PostgreSQL ＋偽の `aws`）で試してから AWS に出している。**それでも #129 では、AWS で2回止まった。** どちらも「試験が通っていない経路」で起きた。
+
+### 型4: Windows の AWS CLI と日本語
+
+**Windows の AWS CLI は、`file://` で渡すファイルも、画面に出す結果も、Windows の文字コード（cp932）で扱う。**
+
+- **渡す側**：Run Command の命令（日本語のコメントや表示を含む）を UTF-8 の JSON で渡したら、`Unable to load paramfile ... could not be decoded` で止まった
+- **受け取る側**：EC2 から返る日本語の表示を、CLI が cp932 で出力した。**「表」「ソ」「能」など、2バイト目が `\` と同じ値の文字**で JSON の書き方が壊れ、`ConvertFrom-Json` が失敗した
+
+直し方は、**どちらも英数字だけで受け渡す**こと（渡す JSON は `ConvertTo-Json -EscapeHandling EscapeNonAscii`、返す表示は EC2 側で `\uXXXX` にして PC で戻す。`scripts/aws/lib.ps1`）。**AI が自分で結果を読むときも同じ**で、日本語を含む結果は `--query` で英数字の項目だけを取り出す。
+
+確かめ方:
+
+- **本物の CLI にファイルを読ませる。** 読み取り専用の権限で `send-command` を送り、**`AccessDeniedException` になれば、ファイルの読み込みは通っている**（命令は実行されない）。`ParamValidation` なら読めていない
+- **受け取る側は、cp932 で読み直しても壊れないかを見る**（`[Text.Encoding]::GetEncoding(932)`）
+
+偽の `aws`（Python）を使った試験では、**この経路を通らないので見つからない。** 偽物で試したら、何を試していないかを書くこと（「型3: jsdom に無い機能」と同じ構図）。
+
+### 型5: Linux で動くファイルの改行
+
+Windows で作ったファイルは、取り出すときに改行が CRLF になる（`core.autocrlf=true`）。**EC2 で bash として実行されるもの、Linux で読まれる設定ファイルに CRLF が混ざると、動かない。** `.githooks/`・`*.tf`（ユーザーデータ）・`*.sh` は `.gitattributes` で LF に固定してある。
+
+```powershell
+git ls-files --eol <path>   # attr/text eol=lf になっているか
+```
+
+**Linux で使うファイルを新しい場所に足したときは、`.gitattributes` の対象に入っているかを必ず見ること。** 段階 3（#131）で、`infra/ec2-setup/` の設定ファイルが対象外になっていたのを、コミットの直前に見つけた。
+
+### 型6: Docker のコンテナと本物の EC2 は、入っているものが違う
+
+Docker の `amazonlinux:2023` には、**EC2 の Amazon Linux 2023 には入っている `tar` や `find` が無かった**（#131）。逆に、コンテナでは systemd が動かない。
+
+- 手順で使う道具は、**ユーザーデータで明示的に入れる**（入っているはず、に頼らない）
+- コンテナで代役（`systemctl` など）を置いたら、**何を再現していないか**を書く
 
 ---
 
@@ -229,6 +285,7 @@ JPA は「動いてしまうが間違っている」が起きやすい。**発�
 
 | 観点 | まだ入っていないもの | 確かめ方 |
 | --- | --- | --- |
+| **`infra/` と `scripts/aws/` の検査** | **CI では何も見ていない**（CI は frontend / backend の2つだけ）。Terraform の整形・検証、PowerShell の文法、bash の静的解析（shellcheck）は手元で走らせるだけ。AWS 上の動作は、人が `start.ps1` / `stop.ps1` を実行して確かめている | 上の「最初に必ずやること」のコマンド。CI に足すなら `terraform fmt -check` と `validate`（AWS の鍵は要らない）から |
 | **CI が必須チェックか** | ruleset は削除禁止・force push 禁止・PR 必須の3つのみ。**赤い PR でもマージボタンが押せた** | `gh api repos/:owner/:repo/rulesets` → `required_status_checks` があるか |
 | a11y の実行時チェック | 静的解析（`jsx-a11y`）のみ。**フォーカストラップは `<dialog>` で入った**（#113）が、確認は手動 | `axe-core` の導入有無 |
 | `noUncheckedIndexedAccess` | 未検討。**足すと 68 件**出る | `tsc -p tsconfig.app.json --noEmit --noUncheckedIndexedAccess` |
@@ -269,3 +326,7 @@ JPA は「動いてしまうが間違っている」が起きやすい。**発�
 - `frontend/src/index.css` — 配色のコントラスト比の検討と、`:focus-visible` の輪郭線
 - `README.md`「品質チェック」／`docs/operations.md` 3.2 — 人間向けの手順
 - `docs/backlog.md` — レビューで見つかった未対応のもの
+- `infra/README.md` — Terraform の2つのフォルダ（作って消すもの・消さないもの）と、AI と人の分担
+- `scripts/aws/README.md` — 作業の始めと終わりのスクリプト、退避・復元の守り方、困ったとき
+- `scripts/aws/lib.ps1` — **Windows の AWS CLI と日本語**の受け渡し（型4）
+- `.gitattributes` — Linux で動くファイルの改行の固定（型5）
