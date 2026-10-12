@@ -6,5 +6,7 @@
 *.tf text eol=lf
 # EC2 の中で bash として実行する手順（scripts/aws/remote）も同じ理由で LF に固定する
 *.sh text eol=lf
+# EC2 に置く設定ファイル（nginx・systemd）とユーザーデータのテンプレートも、Linux で読むので LF に固定する
+infra/ec2-setup/** text eol=lf
 *.tfvars.example text eol=lf
 .terraform.lock.hcl text eol=lf

@@ -1,0 +1,47 @@
+#!/bin/bash
+# =============================================================================
+# EC2 を作った直後に1回だけ実行される手順（ユーザーデータ）
+# =============================================================================
+#
+# ec2.tf の templatefile で組み立てる。nginx.conf などの中身は、同じフォルダのファイルから入る。
+# アプリそのもの（jar と画面のファイル）は、ここでは入れない。
+# scripts/aws/deploy.ps1（または start.ps1）が、S3 から取ってきて入れる。
+set -euxo pipefail
+
+# --- 1. 必要なソフトを入れる ---------------------------------------------------
+#   nginx                               画面を配り、/api を API に中継する
+#   java-25-amazon-corretto-headless    API（Spring Boot）を動かす Java 25（画面の部品なし版）
+#   postgresql17                        退避・復元（pg_dump / pg_restore）と、動作確認の psql
+#   python3 openssl tar                 退避・復元・アプリの入れ替えの手順（scripts/aws/remote）が使う
+#                                       （Amazon Linux 2023 には最初から入っているが、確実にするため）
+dnf install -y nginx java-25-amazon-corretto-headless postgresql17 python3 openssl tar
+
+# --- 2. スワップ（ディスクの一部をメモリの代わりにする）を 1GB 作る ------------
+# メモリ（1GB）が足りなくなったときに、API が強制終了されないための保険。
+fallocate -l 1G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap defaults 0 0' >> /etc/fstab
+
+# --- 3. API の利用者と置き場所 -------------------------------------------------
+useradd --system --no-create-home --shell /sbin/nologin taskmgmt
+mkdir -p /opt/taskmgmt /etc/taskmgmt /usr/share/nginx/taskmgmt
+
+cat > /opt/taskmgmt/run.sh <<'TASKMGMT_EOF'
+${api_run}
+TASKMGMT_EOF
+chmod 755 /opt/taskmgmt/run.sh
+
+cat > /etc/systemd/system/taskmgmt-api.service <<'TASKMGMT_EOF'
+${api_unit}
+TASKMGMT_EOF
+systemctl daemon-reload
+systemctl enable taskmgmt-api
+
+# --- 4. nginx ------------------------------------------------------------------
+cat > /etc/nginx/nginx.conf <<'TASKMGMT_EOF'
+${nginx_conf}
+TASKMGMT_EOF
+nginx -t
+systemctl enable --now nginx

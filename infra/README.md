@@ -2,7 +2,7 @@
 
 このアプリを AWS の上で動かすための、**サーバーやネットワークの設計図**。Terraform という道具が、この設計図のとおりに AWS の上へ作ったり、消したりする。
 
-> **いまは段階 2b（EC2 と RDS を立て、DB を S3 に退避・復元できる）まで。** アプリの配置（段階 3）は、後で足す。進め方と、構成を決めた理由・料金は、デプロイガイド（`docs/deployment/`）の 06・07 にある。
+> **いまは段階 3（EC2 と RDS を立て、画面と API を動かし、DB を S3 に退避・復元できる）まで。**進め方と、構成を決めた理由・料金は、デプロイガイド（`docs/deployment/`）の 06・07 にある。
 
 > **作業の始めと終わりは、`scripts/aws/start.ps1` と `stop.ps1` を使う**（[scripts/aws/README.md](../scripts/aws/README.md)）。`terraform destroy` を直接打つと、DB が退避されずに消える。
 
@@ -29,6 +29,8 @@
 | [ec2.tf](ec2.tf) | EC2 `t3.micro`・ディスク 8GB・動作確認用のページ・PostgreSQL のクライアント | **動かしている間だけかかる** |
 | [rds.tf](rds.tf) | RDS `db.t3.micro`（PostgreSQL 17・gp3 20GB）、パスワードとその置き場（パラメータストア） | **動かしている間だけかかる** |
 | [backup.tf](backup.tf) | S3 への近道（ゲートウェイエンドポイント）、EC2 にバックアップの置き場を読み書きする権限 | 無料 |
+| [app.tf](app.tf) | EC2 に、PC でビルドしたアプリ（S3 の `artifacts/`）を取り出す権限 | 無料 |
+| [ec2-setup/](ec2-setup/) | EC2 を作った直後の手順（ユーザーデータ）：Java 25・nginx などを入れる、スワップ 1GB、nginx の設定（画面と `/api` の中継）、API を動かす systemd の設定 | — |
 | [alarm.tf](alarm.tf) | 1時間ほぼ何もしていなければ EC2 を終了するアラーム | 無料枠の範囲 |
 | [outputs.tf](outputs.tf) | 作った後に表示する値（URL、サーバーに入るコマンド、RDS につなぐコマンド） | — |
 
@@ -90,14 +92,14 @@ terraform -chdir=infra apply
 
 ---
 
-## 動作確認（段階 1）
+## 動作確認
 
-apply が終わると、URL とコマンドが表示される（後からは `terraform -chdir=infra output` で見られる）。
+`start.ps1` が終わると、画面の住所（`web_url`）が表示される（後からは `terraform -chdir=infra output` で見られる）。
 
-1. **ページが開けるか**：表示された `web_url` をブラウザで開く。「taskmgmt: EC2 is running」と出れば成功。作った直後はソフトの準備中で、開けるまで数分かかることがある
-2. **自分の IP 以外からは開けないか**：スマートフォンの Wi-Fi を切り、モバイル回線で同じ URL を開く。開けなければ成功
-3. **サーバーに入れるか**：表示された `session_manager_command` を実行する。入れたら `df -h` でディスクの使用量を見る。`exit` で出る
-4. **終わったら destroy する**
+1. **アプリが開けるか**：`web_url` をブラウザで開く。タスク管理のボードが表示されれば成功
+2. **自分の IP 以外からは開けないか**：スマートフォンの Wi-Fi を切り、モバイル回線で同じ住所を開く。開けなければ成功
+3. **サーバーに入れるか**：表示された `session_manager_command` を実行する。`free -h` でメモリ、`df -h` でディスク、`journalctl -u taskmgmt-api` で API のログを見られる。`exit` で出る
+4. **終わったら `stop.ps1`**（`terraform destroy` を直接打たない）
 
 ### 段階 2a：EC2 から RDS につながるか
 

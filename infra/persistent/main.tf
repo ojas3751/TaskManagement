@@ -2,7 +2,8 @@
 # バックアップの置き場（S3 バケット）
 # =============================================================================
 #
-# DB の中身を書き出したファイルを置く場所。作業のたびに消さない。
+# DB の中身を書き出したファイル（backups/）と、PC でビルドしたアプリ（artifacts/）を置く場所。
+# 作業のたびに消さない。
 #
 # 料金は置いた量だけ（$0.025 / GB・月）。バックアップは数 MB なので、月 $0.001 未満。
 #
@@ -85,6 +86,26 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup" {
     }
 
     # アップロードが途中で失敗して残った断片を、1日で片付ける。
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+
+  # PC でビルドしたアプリ（scripts/aws/deploy.ps1 が置く）も、同じく「最新＋1つ前」だけ残す。
+  # API の jar が約 51MB なので、2世代で約 100MB、月 $0.003 程度。
+  rule {
+    id     = "keep-two-app-builds"
+    status = "Enabled"
+
+    filter {
+      prefix = "artifacts/"
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days           = 1
+      newer_noncurrent_versions = 1
+    }
+
     abort_incomplete_multipart_upload {
       days_after_initiation = 1
     }

@@ -46,17 +46,14 @@ resource "aws_instance" "web" {
   }
 
   # サーバーを作った直後に1回だけ実行される手順（ユーザーデータ）。
-  #   ・動作確認用に、Web サーバー（nginx）を入れて簡単なページを出す（段階 1）
-  #   ・RDS につなぐための PostgreSQL のクライアント（psql・pg_dump・pg_restore）を入れる（段階 2）
-  #   ・退避・復元の手順（scripts/aws/remote）が使う python3 と openssl を入れる（段階 2b。
-  #     Amazon Linux 2023 には最初から入っているが、確実にするため）
-  # 段階 3 で、ここをアプリを動かす手順に置き換える。
-  user_data = <<-EOF
-    #!/bin/bash
-    dnf install -y nginx postgresql17 python3 openssl
-    echo '<h1>taskmgmt: EC2 is running</h1>' > /usr/share/nginx/html/index.html
-    systemctl enable --now nginx
-  EOF
+  # 中身は ec2-setup/user-data.sh.tftpl。Java・nginx・PostgreSQL のクライアントなどを入れ、
+  # nginx と API の起動の仕組みを設定する。アプリそのものは deploy.sh が後から入れる。
+  # templatefile は、テンプレートの ${...} の場所に、下の値（各ファイルの中身）を入れて1つにする。
+  user_data = templatefile("${path.module}/ec2-setup/user-data.sh.tftpl", {
+    nginx_conf = file("${path.module}/ec2-setup/nginx.conf")
+    api_unit   = file("${path.module}/ec2-setup/taskmgmt-api.service")
+    api_run    = file("${path.module}/ec2-setup/run.sh")
+  })
 
   # ユーザーデータを書き換えたら、サーバーを作り直す（作った直後にしか実行されないため）。
   user_data_replace_on_change = true
