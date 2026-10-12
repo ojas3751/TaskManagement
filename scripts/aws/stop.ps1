@@ -57,7 +57,7 @@ Wait-ServerReady $out
 Write-Step '2/3 DB を S3 に退避します'
 
 $r = Invoke-OnServer -Out $out -ScriptName 'backup.sh' -Env @{ FORCE = '0' }
-$last = ($r.Output -split "`n" | Select-Object -Last 1).Trim()
+$last = $r.Last
 
 if ($last -eq 'BACKUP_BLOCKED') {
     Write-Host ''
@@ -70,7 +70,7 @@ if ($last -eq 'BACKUP_BLOCKED') {
         exit 1
     }
     $r = Invoke-OnServer -Out $out -ScriptName 'backup.sh' -Env @{ FORCE = '1' }
-    $last = ($r.Output -split "`n" | Select-Object -Last 1).Trim()
+    $last = $r.Last
 }
 
 if ($r.Status -ne 'Success' -or $last -ne 'BACKUP_OK') {

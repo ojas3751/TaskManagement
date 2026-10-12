@@ -99,9 +99,30 @@ function Invoke-OnServer {
         if ($inv.Status -notin @('Pending', 'InProgress', 'Delayed')) { break }
     }
 
-    $output = ConvertFrom-ServerOutput ($inv.StandardOutputContent + "`n" + $inv.StandardErrorContent).Trim()
-    if (-not $Bare -and $output) { Write-Host $output }
-    return @{ Status = $inv.Status; Code = $inv.ResponseCode; Output = $output }
+    $result = ConvertFrom-Invocation $inv
+    if (-not $Bare) {
+        if ($result.Stdout) { Write-Host $result.Stdout }
+        if ($result.Stderr) { Write-Host $result.Stderr -ForegroundColor DarkGray }
+    }
+    return $result
+}
+
+# get-command-invocation の結果を、スクリプトが使う形にする。AWS には触らない。
+# 手順の表示（標準出力）と、AWS が付け足す表示（エラー出力）を分けて扱う。
+# 手順が 0 以外で終わると、AWS がエラー出力に「failed to run commands: exit status N」を
+# 付け足す。結果の判断（BACKUP_OK など）は、手順の表示の最後の行（Last）だけで行う。
+function ConvertFrom-Invocation($Inv) {
+    $stdout = ConvertFrom-ServerOutput ([string]$Inv.StandardOutputContent).Trim()
+    $stderr = ConvertFrom-ServerOutput ([string]$Inv.StandardErrorContent).Trim()
+    $last = (($stdout -split "`n") | Where-Object { $_.Trim() } | Select-Object -Last 1)
+    return @{
+        Status = $Inv.Status
+        Code   = $Inv.ResponseCode
+        Stdout = $stdout
+        Stderr = $stderr
+        Output = (@($stdout, $stderr) | Where-Object { $_ }) -join "`n"
+        Last   = if ($last) { $last.Trim() } else { '' }
+    }
 }
 
 # Run Command の --parameters に渡す JSON を作る（英数字だけ）。AWS には触らない。

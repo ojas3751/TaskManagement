@@ -36,7 +36,7 @@ Wait-ServerReady $out
 
 Write-Step '3/3 DB を復元します'
 $r = Invoke-OnServer -Out $out -ScriptName 'restore.sh'
-$last = ($r.Output -split "`n" | Select-Object -Last 1).Trim()
+$last = $r.Last
 
 if ($r.Status -eq 'Success' -and $last -eq 'RESTORE_OK') {
     Write-Ok '復元しました。件数も退避したときと一致しています。'
