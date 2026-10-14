@@ -2,7 +2,7 @@
 
 このアプリを AWS の上で動かすための、**サーバーやネットワークの設計図**。Terraform という道具が、この設計図のとおりに AWS の上へ作ったり、消したりする。
 
-> **いまは段階 3（EC2 と RDS を立て、画面と API を動かし、DB を S3 に退避・復元できる）まで。**進め方と、構成を決めた理由・料金は、デプロイガイド（`docs/deployment/`）の 06・07 にある。
+> **いまは段階 3（EC2 と RDS を立て、画面と API を動かし、DB を S3 に退避・復元できる）まで。**構成を決めた理由と料金は [インフラ構成書](../docs/infrastructure.md)、権限の設計は [セキュリティ設計](../docs/security.md)、日々の操作は [運用手順](../docs/operations.md) の「5. AWS での作業」にある。
 
 > **作業の始めと終わりは、`scripts/aws/start.ps1` と `stop.ps1` を使う**（[scripts/aws/README.md](../scripts/aws/README.md)）。`terraform destroy` を直接打つと、DB が退避されずに消える。
 
