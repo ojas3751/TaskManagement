@@ -5,7 +5,7 @@
 # AWS がデータベース専用のサーバーを用意し、管理してくれるサービス。
 # PC では Docker で PostgreSQL を動かしているが、AWS ではこれを使う。
 #
-# 料金がかかるのはここ（動かしている間だけ。単価はデプロイガイド 07）:
+# 料金がかかるのはここ（動かしている間だけ。単価は docs/infrastructure.md の 6 章）:
 #   RDS 本体（db.t3.micro）、RDS のディスク（gp3 20GB）
 #
 # destroy すると、RDS もその中のデータも消える。そのため、作業の終わりは scripts/aws/stop.ps1 で
@@ -86,7 +86,7 @@ resource "aws_db_instance" "main" {
   delete_automated_backups = true
 
   # destroy のときに、消す前の写し（スナップショット）を取らない。データは S3 に退避している。
-  # 予備として写しも残すかは、本物のデータを入れ始める前に決める（デプロイガイド 06 の「未確定」）。
+  # 予備として写しも残すかは、本物のデータを入れ始める前に決める（docs/infrastructure.md の 9 章）。
   skip_final_snapshot = true
 
   # 作業のたびに消す運用なので、削除の保護はかけない。

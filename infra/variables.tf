@@ -27,19 +27,19 @@ variable "my_ip_cidr" {
 variable "instance_type" {
   description = "EC2 の種類（CPU とメモリの大きさ）"
   type        = string
-  default     = "t3.micro" # x64・メモリ 1GB。決めた理由はデプロイガイド 06
+  default     = "t3.micro" # x64・メモリ 1GB。決めた理由は docs/infrastructure.md の 3 章
 }
 
 variable "root_volume_size" {
   description = "EC2 のディスクの大きさ（GB）"
   type        = number
-  default     = 8 # Amazon Linux 2023 が配られている大きさ。見積もりはデプロイガイド 06
+  default     = 8 # Amazon Linux 2023 が配られている大きさ。見積もりは docs/infrastructure.md の 3 章
 }
 
 variable "db_instance_class" {
   description = "RDS の種類（CPU とメモリの大きさ）"
   type        = string
-  default     = "db.t3.micro" # x64・メモリ 1GB。決めた理由と料金の比較はデプロイガイド 06
+  default     = "db.t3.micro" # x64・メモリ 1GB。決めた理由と料金の比較は docs/infrastructure.md の 3 章・7 章
 }
 
 variable "db_engine_version" {

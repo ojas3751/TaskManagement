@@ -1,6 +1,6 @@
 # TaskManagement
 
-Trello 風の単一ボード型タスク管理アプリ。**個人用・ローカル専用**（外部公開しない）。
+Trello 風の単一ボード型タスク管理アプリ。**個人用。ローカルで動かすことを主とする。**
 
 タスクを列（リスト）に並べ、追加・編集・削除・列間の移動を行う。利用者は本人1名、利用端末は PC のブラウザのみ。認証は持たない。
 
@@ -8,7 +8,7 @@ Web 開発の学習を副次目的としており、**要件定義から順に�
 
 | | |
 | --- | --- |
-| **現在地** | **MVP 完成**（Step 0〜11 がすべて完了）。タスクの追加・編集・削除・移動、列の追加・改名・削除・並び替えが揃っている。全体像は [開発計画](docs/development-plan.md) |
+| **現在地** | **MVP 完成**（Step 0〜11 がすべて完了）。タスクの追加・編集・削除・移動、列の追加・改名・削除・並び替えが揃っている。**AWS へのデプロイも確認済み**。全体像は [開発計画](docs/development-plan.md) |
 | **入り口** | `http://localhost:3000` |
 | **文書の起点** | [要件定義書](docs/requirements.md) |
 | **作業ルール** | [CLAUDE.md](CLAUDE.md)（Issue → ブランチ → PR） |
@@ -55,6 +55,23 @@ Web 開発の学習を副次目的としており、**要件定義から順に�
 
 **利用者が開くのは `localhost:3000` だけでよい。** `/api` へのリクエストだけが 8080 へ転送されるため、ブラウザから見た通信は同一オリジンになり、CORS の設定が要らない。
 
+### AWS 上の構成
+
+学習のため、同じアプリを AWS 上でも動かせるようにしてある。**画面と API を EC2 1台に載せ、DB は RDS に置く**形で、作業の始めに作り、終わりに消す運用。認証の代わりに**セキュリティグループで自分の IP からの通信だけを通す**。
+
+```
+ブラウザ ──HTTP（自分の IP だけ）──▶  EC2 ── nginx :80
+                                         ├ /      → 画面のファイル
+                                         └ /api/* → Spring Boot :8080
+                                              │
+                                              ├─▶ RDS (PostgreSQL)
+                                              └─▶ S3（DB の退避・アプリの置き場）
+```
+
+構成図と設計の理由は [インフラ構成書](docs/infrastructure.md)、権限と秘密情報の扱いは [セキュリティ設計](docs/security.md)、操作の手順は [運用手順](docs/operations.md) の「5. AWS での作業」。**設定値の正本は [infra/](infra/) の Terraform コード。**
+
+> **ふだんの開発と動作確認はローカルで行う。** AWS 上にサーバーがある間は 1 時間あたり約 $0.05 の料金が積み上がるため、作業の終わりには `pwsh scripts/aws/stop.ps1` まで実行する。
+
 ### ディレクトリ
 
 ```
@@ -72,9 +89,19 @@ frontend/                React + Vite
 compose.yaml             PostgreSQL のコンテナ構成
 docs/                    設計ドキュメント（→ docs/README.md）
 mock/                    画面モック（素の HTML/CSS/JS。バックエンド不要）
+infra/                   Terraform（AWS の設計図。→ infra/README.md）
+  *.tf                     作業のたびに作って消すもの（VPC / EC2 / RDS / S3 エンドポイント / アラーム）
+  ec2-setup/               EC2 を作った直後の手順（user-data、nginx、systemd）
+  persistent/              消さないもの（バックアップ用の S3 バケット。state も別）
 scripts/                 開発補助（ポート解放、seed）
+  aws/                     AWS での作業（→ scripts/aws/README.md）
+    start.ps1 / stop.ps1     作業の始めと終わり（復元・退避を含む）
+    deploy.ps1               アプリだけを入れ替える
+    remote/                  EC2 の中で動く bash（退避・復元・配置）
 .claude/                 作業ルールの強制（フック）と手順スキル
 ```
+
+> **`infra/` と `scripts/aws/` は、CI の検査対象に入っていない**（CI はフロントエンドとバックエンドの2つだけ）。変更したときは手元で `terraform fmt -check` と `validate` を走らせる（[品質レビュー スキル](.claude/skills/quality-review/SKILL.md)）。
 
 ---
 
@@ -134,6 +161,18 @@ pwsh -File scripts/free-port.ps1 3000 8080
 | DB に psql で入る | `docker compose exec db psql -U taskmanagement -d taskmanagement` |
 | ポート解放 | `pwsh -File scripts/free-port.ps1 3000 8080` |
 
+**AWS での作業**（手順は [運用手順](docs/operations.md) の「5. AWS での作業」）
+
+| 目的 | コマンド | 誰が打つか |
+| --- | --- | --- |
+| **作業の始め**（作る → 復元 → 起動） | `pwsh scripts/aws/start.ps1` | **人** |
+| **作業の終わり**（止める → 退避 → 消す） | `pwsh scripts/aws/stop.ps1` | **人** |
+| アプリだけ入れ替える | `pwsh scripts/aws/deploy.ps1` | **人** |
+| Terraform の整形・検証 | `terraform -chdir=infra fmt` / `validate` | AI |
+| 作る予定の確認 | `terraform -chdir=infra plan` | AI（読み取り専用の鍵で） |
+
+> ⚠️ **`terraform apply` / `destroy` を直接打たないこと。** `destroy` は DB を退避せずに消す。`apply` / `destroy` と AWS の削除系コマンドは**人が打つ**（AI はフックと読み取り専用ロールで止められている。[セキュリティ設計](docs/security.md)）。
+
 `psql` / `pg_dump` は**コンテナ経由で使う**。ホストに入れる必要はなく、サーバーと版が必ず一致する。バックアップ手順は [運用手順](docs/operations.md)。
 
 ### 品質チェック
@@ -164,7 +203,9 @@ pwsh -File scripts/free-port.ps1 3000 8080
 | [API設計](docs/design/api.md) | エンドポイントと入出力仕様 |
 | [開発計画](docs/development-plan.md) | Step 0〜11。GitHub のマイルストーンと対応 |
 | [ブラッシュアップ案](docs/backlog.md) | **MVP 完成後にやることの候補。** 着手する順、保留するもの、実装面の改善案 |
-| [運用手順](docs/operations.md) | 初回セットアップ、起動、バックアップ |
+| [運用手順](docs/operations.md) | 初回セットアップ、起動、バックアップ、AWS での作業の手順 |
+| [インフラ構成書](docs/infrastructure.md) | **AWS 上の構成と、そう決めた理由。** 構成図、主要な設定値、費用と安全装置 |
+| [セキュリティ設計](docs/security.md) | **AWS の権限の設計と、秘密情報を漏らさないための対策。** IAM、人と AI の分担、5層の対策 |
 
 **初めて読む場合は上から順に読むと前提が積み上がる。** 各文書は独立した改訂履歴を持ち、版の刻み方は各文書の冒頭に書いてある。索引と読む順の詳細は [ドキュメント一覧](docs/README.md)。
 
